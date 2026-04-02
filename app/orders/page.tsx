@@ -10,7 +10,6 @@ type ListRow = {
   date: string;
   progress: OrderProgress;
   customer_name: string | null;
-  order_items: { id: string }[] | null;
 };
 
 type SearchParams = { platform?: string; progress?: string };
@@ -35,17 +34,7 @@ export default async function OrdersPage({
 
   let query = supabase
     .from("orders")
-    .select(
-      `
-      order_num,
-      platform,
-      order_type,
-      date,
-      progress,
-      customer_name,
-      order_items ( id )
-    `,
-    )
+    .select("order_num, platform, order_type, date, progress, customer_name")
     .order("date", { ascending: false })
     .order("order_num", { ascending: false });
 
@@ -64,6 +53,17 @@ export default async function OrdersPage({
 
   const orders = (rows ?? []) as ListRow[];
 
+  const itemCountByOrder = new Map<string, number>();
+  const { data: itemRows, error: itemsError } = await supabase
+    .from("order_items")
+    .select("order_num");
+  if (!itemsError && itemRows) {
+    for (const r of itemRows) {
+      const k = r.order_num as string;
+      itemCountByOrder.set(k, (itemCountByOrder.get(k) ?? 0) + 1);
+    }
+  }
+
   const base = "/orders";
 
   return (
@@ -73,6 +73,11 @@ export default async function OrdersPage({
           <h1 className="text-2xl font-semibold tracking-tight">주문 목록</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             총 {orders.length}건 · Supabase orders / order_items
+            {itemsError ? (
+              <span className="ml-2 text-amber-600 dark:text-amber-400">
+                (상품 수는 불러오지 못함: {itemsError.message})
+              </span>
+            ) : null}
           </p>
         </div>
         <Link
@@ -143,7 +148,7 @@ export default async function OrdersPage({
                 </tr>
               ) : (
                 orders.map((o) => {
-                  const n = o.order_items?.length ?? 0;
+                  const n = itemCountByOrder.get(o.order_num) ?? 0;
                   return (
                     <tr key={o.order_num} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40">
                       <td className="px-4 py-3 font-mono font-medium">
