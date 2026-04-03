@@ -170,6 +170,39 @@ function buildItemRevertUpdates(field: ItemEditableField, before: OrderItemRow):
   }
 }
 
+const ORDER_COLORS: Array<{ text: string; bg: string }> = [
+  { text: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/30" },
+  { text: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950/30" },
+  { text: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-950/30" },
+  { text: "text-rose-600", bg: "bg-rose-50 dark:bg-rose-950/30" },
+  { text: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/30" },
+  { text: "text-cyan-600", bg: "bg-cyan-50 dark:bg-cyan-950/30" },
+  { text: "text-pink-600", bg: "bg-pink-50 dark:bg-pink-950/30" },
+  { text: "text-indigo-600", bg: "bg-indigo-50 dark:bg-indigo-950/30" },
+  { text: "text-teal-600", bg: "bg-teal-50 dark:bg-teal-950/30" },
+  { text: "text-orange-600", bg: "bg-orange-50 dark:bg-orange-950/30" },
+  { text: "text-lime-600", bg: "bg-lime-50 dark:bg-lime-950/30" },
+  { text: "text-fuchsia-600", bg: "bg-fuchsia-50 dark:bg-fuchsia-950/30" },
+];
+
+function getOrderColor(orderNum: string): (typeof ORDER_COLORS)[number] {
+  const hash = orderNum.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return ORDER_COLORS[hash % ORDER_COLORS.length];
+}
+
+const PROGRESS_ORDER = [
+  "PAY",
+  "BUY IN KOREA",
+  "ARRIVE KOR",
+  "IN DELIVERY",
+  "ARRIVE RUS",
+  "RU DELIVERY",
+  "DONE",
+  "WAIT CUSTOMER",
+  "PROBLEM",
+  "CANCEL",
+];
+
 const CLICK_SLOP_PX = 5;
 
 export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWithNestedItems[] }) {
@@ -188,10 +221,34 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const selectRef = useRef<HTMLSelectElement>(null);
   const savingRef = useRef(false);
 
-  const displayRows = useMemo(
-    () => flatRows.filter((r): r is FlatOrderItemRow & { item: OrderItemRow } => r.item !== null),
-    [flatRows],
-  );
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const displayRows = useMemo(() => {
+    const rows = flatRows.filter((r): r is FlatOrderItemRow & { item: OrderItemRow } => r.item !== null);
+    rows.sort((a, b) => {
+      const pa = PROGRESS_ORDER.indexOf(a.order.progress);
+      const pb = PROGRESS_ORDER.indexOf(b.order.progress);
+      const progressDiff = (pa === -1 ? 999 : pa) - (pb === -1 ? 999 : pb);
+      if (progressDiff !== 0) return progressDiff;
+      const dateA = a.order.date ?? "";
+      const dateB = b.order.date ?? "";
+      if (dateA !== dateB) return dateA < dateB ? -1 : 1;
+      return a.order.order_num.localeCompare(b.order.order_num);
+    });
+    return rows;
+  }, [flatRows]);
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return displayRows;
+    return displayRows.filter(
+      (row) =>
+        row.order.order_num.toLowerCase().includes(q) ||
+        (row.item.product_name ?? "").toLowerCase().includes(q) ||
+        (row.order.customer_name ?? "").toLowerCase().includes(q) ||
+        (row.item.product_option ?? "").toLowerCase().includes(q),
+    );
+  }, [displayRows, searchQuery]);
 
   useEffect(() => {
     setFlatRows(flattenOrders(initialOrders));
@@ -605,8 +662,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     }
   };
 
-  const lineCount = displayRows.length;
-  const orderCount = new Set(displayRows.map((r) => r.order.order_num)).size;
+  const lineCount = filteredRows.length;
+  const orderCount = new Set(filteredRows.map((r) => r.order.order_num)).size;
 
   return (
     <>
@@ -677,6 +734,14 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         변경 이력 {history.length > 0 ? `(${history.length})` : ""}
       </button>
 
+      <input
+        type="text"
+        placeholder="주문번호, 상품명, 고객명, 옵션으로 검색…"
+        className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
+
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         주문 {orderCount}건 · 표시 행 {lineCount}줄 (품목이 있는 주문만) · 테이블을 드래그하면 좌우로 스크롤됩니다.
       </p>
@@ -709,20 +774,28 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
             </tr>
           </thead>
           <tbody>
-            {displayRows.map((row) => {
+            {filteredRows.length === 0 ? (
+              <tr>
+                <td colSpan={18} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                  검색 결과가 없습니다.
+                </td>
+              </tr>
+            ) : null}
+            {filteredRows.map((row) => {
               const { order, item, groupColorIndex } = row;
               const g = groupRowClass(groupColorIndex);
               const on = order.order_num;
               const id = item.id;
               const rowKey = `${on}-${id}`;
+              const orderColor = getOrderColor(on);
 
               return (
                 <tr key={rowKey} className={g}>
                   {/* 주문번호 */}
-                  <td className={`${tdBase} font-mono font-medium ${g}`}>
+                  <td className={`${tdBase} font-mono font-medium ${orderColor.bg}`}>
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
-                      className="text-emerald-700 hover:underline dark:text-emerald-400"
+                      className={`${orderColor.text} hover:underline`}
                     >
                       {on}
                     </Link>
