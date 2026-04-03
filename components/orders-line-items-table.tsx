@@ -10,6 +10,7 @@ import {
 import {
   ORDER_PROGRESS,
   PHOTO_STATUS,
+  PLATFORMS,
   PRODUCT_CATEGORIES,
   SET_TYPES,
   type OrderItemRow,
@@ -262,6 +263,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const savingRef = useRef(false);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const [filters, setFilters] = useState({
+    platform: "",
+    progress: "",
+    setType: "",
+    gift: "",
+    photoSent: "",
+    hasBalance: "",
+  });
 
   const displayRows = useMemo(() => {
     const rows = flatRows.filter((r): r is FlatOrderItemRow & { item: OrderItemRow } => r.item !== null);
@@ -282,19 +292,43 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return displayRows;
-    return displayRows.filter(
-      (row) =>
-        row.order.order_num.toLowerCase().includes(q) ||
-        (row.item.product_name ?? "").toLowerCase().includes(q) ||
-        (row.order.customer_name ?? "").toLowerCase().includes(q) ||
-        (row.item.product_option ?? "").toLowerCase().includes(q),
-    );
-  }, [displayRows, searchQuery]);
+    return displayRows.filter((row) => {
+      if (filters.platform && row.order.platform !== filters.platform) return false;
+      const rowProgress = row.item.progress ?? row.order.progress ?? "";
+      if (filters.progress && rowProgress !== filters.progress) return false;
+      if (filters.setType && row.item.product_set_type !== filters.setType) return false;
+      const rowGift = row.item.gift ?? "no";
+      if (filters.gift && rowGift !== filters.gift) return false;
+      const rowPhoto = row.item.photo_sent ?? "Not sent";
+      if (filters.photoSent && rowPhoto !== filters.photoSent) return false;
+      const extra = computedExtra(row.item);
+      if (filters.hasBalance === "yes" && !(extra > 0)) return false;
+      if (filters.hasBalance === "no" && extra > 0) return false;
+      if (q) {
+        if (
+          !row.order.order_num.toLowerCase().includes(q) &&
+          !(row.item.product_name ?? "").toLowerCase().includes(q) &&
+          !(row.order.customer_name ?? "").toLowerCase().includes(q) &&
+          !(row.item.product_option ?? "").toLowerCase().includes(q)
+        ) return false;
+      }
+      return true;
+    });
+  }, [displayRows, searchQuery, filters]);
 
   useEffect(() => {
     setFlatRows(flattenOrders(initialOrders));
   }, [initialOrders]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-filter-dropdown]")) {
+        setOpenFilter(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -717,6 +751,58 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   const lineCount = filteredRows.length;
   const orderCount = new Set(filteredRows.map((r) => r.order.order_num)).size;
+  const hasActiveFilter = Object.values(filters).some(Boolean);
+
+  type FilterKey = keyof typeof filters;
+  function FilterDropdown({
+    label,
+    field,
+    options,
+  }: {
+    label: string;
+    field: FilterKey;
+    options: { label: string; value: string }[];
+  }) {
+    const active = Boolean(filters[field]);
+    return (
+      <div className="relative" data-filter-dropdown>
+        <button
+          type="button"
+          onClick={() => setOpenFilter(openFilter === field ? null : field)}
+          className={`flex items-center gap-1 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm transition ${
+            active
+              ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
+          }`}
+        >
+          {label}
+          {active ? ` · ${filters[field]}` : ""}
+          <span className="opacity-50 text-xs">▾</span>
+        </button>
+        {openFilter === field && (
+          <div className="absolute left-0 top-full z-50 mt-1 min-w-[150px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  setFilters((f) => ({ ...f, [field]: opt.value }));
+                  setOpenFilter(null);
+                }}
+                className={`block w-full px-4 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-zinc-800 ${
+                  filters[field] === opt.value
+                    ? "font-medium text-emerald-600 dark:text-emerald-400"
+                    : "text-gray-700 dark:text-zinc-300"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -787,16 +873,73 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         변경 이력 {history.length > 0 ? `(${history.length})` : ""}
       </button>
 
-      <input
-        type="text"
-        placeholder="주문번호, 상품명, 고객명, 옵션으로 검색…"
-        className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-      />
+      {/* 필터 바 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterDropdown
+          label="진행"
+          field="progress"
+          options={[{ label: "전체", value: "" }, ...ORDER_PROGRESS.map((p) => ({ label: p, value: p }))]}
+        />
+        <FilterDropdown
+          label="플랫폼"
+          field="platform"
+          options={[{ label: "전체", value: "" }, ...PLATFORMS.map((p) => ({ label: p, value: p }))]}
+        />
+        <FilterDropdown
+          label="단품/세트"
+          field="setType"
+          options={[
+            { label: "전체", value: "" },
+            { label: "Single", value: "Single" },
+            { label: "SET", value: "SET" },
+          ]}
+        />
+        <FilterDropdown
+          label="선물"
+          field="gift"
+          options={[
+            { label: "전체", value: "" },
+            { label: "no", value: "no" },
+            { label: "ask", value: "ask" },
+          ]}
+        />
+        <FilterDropdown
+          label="사진"
+          field="photoSent"
+          options={[{ label: "전체", value: "" }, ...PHOTO_STATUS.map((s) => ({ label: s, value: s }))]}
+        />
+        <FilterDropdown
+          label="잔금"
+          field="hasBalance"
+          options={[
+            { label: "전체", value: "" },
+            { label: "잔금 있음", value: "yes" },
+            { label: "잔금 없음", value: "no" },
+          ]}
+        />
+        {hasActiveFilter && (
+          <button
+            type="button"
+            onClick={() =>
+              setFilters({ platform: "", progress: "", setType: "", gift: "", photoSent: "", hasBalance: "" })
+            }
+            className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          >
+            초기화
+          </button>
+        )}
+        <input
+          type="text"
+          placeholder="주문번호·상품명·고객·옵션 검색…"
+          className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+          style={{ minWidth: "220px" }}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
 
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        주문 {orderCount}건 · 표시 행 {lineCount}줄 (품목이 있는 주문만) · 테이블을 드래그하면 좌우로 스크롤됩니다.
+        주문 {orderCount}건 · 표시 행 {lineCount}줄 · 테이블을 드래그하면 좌우로 스크롤됩니다.
       </p>
 
       <div
@@ -804,16 +947,38 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         className="w-full overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
       >
         <table className="min-w-full border-collapse text-left text-sm">
+          <colgroup>
+            <col style={{ width: "32px", minWidth: "32px" }} />
+            <col style={{ width: "46px", minWidth: "46px" }} />
+            <col style={{ width: "90px", minWidth: "90px" }} />
+            <col style={{ minWidth: "300px" }} />
+            <col style={{ minWidth: "180px" }} />
+            <col style={{ minWidth: "112px" }} />
+            <col style={{ minWidth: "72px" }} />
+            <col style={{ minWidth: "52px" }} />
+            <col style={{ minWidth: "88px" }} />
+            <col style={{ minWidth: "100px" }} />
+            <col style={{ minWidth: "72px" }} />
+            <col style={{ minWidth: "72px" }} />
+            <col style={{ minWidth: "100px" }} />
+            <col style={{ minWidth: "88px" }} />
+            <col style={{ minWidth: "88px" }} />
+            <col style={{ minWidth: "48px" }} />
+            <col style={{ minWidth: "88px" }} />
+            <col style={{ minWidth: "88px" }} />
+            <col style={{ minWidth: "80px" }} />
+            <col style={{ minWidth: "72px" }} />
+          </colgroup>
           <thead>
             <tr>
               {/* sticky: # */}
-              <th className={`${thClass} sticky left-0 top-0 z-30 w-[32px]`}>#</th>
+              <th className={`${thClass} sticky top-0 z-30`} style={{ left: 0, width: "32px", minWidth: "32px" }}>#</th>
               {/* sticky: 날짜 */}
-              <th className={`${thClass} sticky left-[32px] top-0 z-30 w-[44px]`}>날짜</th>
+              <th className={`${thClass} sticky top-0 z-30`} style={{ left: "32px", width: "46px", minWidth: "46px" }}>날짜</th>
               {/* sticky: 주문번호 */}
-              <th className={`${thClass} sticky left-[76px] top-0 z-30 w-[90px]`}>주문번호</th>
+              <th className={`${thClass} sticky top-0 z-30`} style={{ left: "78px", width: "90px", minWidth: "90px" }}>주문번호</th>
               {/* sticky: 상품명 */}
-              <th className={`${thClass} sticky left-[166px] top-0 z-30 min-w-[300px] text-left`}>상품명</th>
+              <th className={`${thClass} sticky top-0 z-30 text-left`} style={{ left: "168px", minWidth: "300px" }}>상품명</th>
               <th className={`${thClass} min-w-[180px] text-left`}>옵션</th>
               <th className={`${thClass} min-w-[112px]`}>진행</th>
               <th className={`${thClass} min-w-[72px]`}>단품/세트</th>
@@ -853,12 +1018,18 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               return (
                 <tr key={rowKey}>
                   {/* # 줄 번호 */}
-                  <td className={`${tdBase} sticky left-0 z-20 w-[32px] border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}>
+                  <td
+                    className={`${tdBase} sticky z-20 border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}
+                    style={{ left: 0, width: "32px", minWidth: "32px" }}
+                  >
                     {idx + 1}
                   </td>
 
                   {/* 날짜 */}
-                  <td className={`${tdBase} sticky left-[32px] z-20 w-[44px] whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${dateBgClass(computedExtra(item))}`}>
+                  <td
+                    className={`${tdBase} sticky z-20 whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${dateBgClass(computedExtra(item))}`}
+                    style={{ left: "32px", width: "46px", minWidth: "46px" }}
+                  >
                     {order.date ? (() => {
                       const d = new Date(order.date);
                       return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
@@ -866,7 +1037,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 주문번호 */}
-                  <td className={`${tdBase} sticky left-[76px] z-20 w-[90px] border-r-gray-300 font-semibold ${orderBg}`}>
+                  <td
+                    className={`${tdBase} sticky z-20 border-r-gray-300 font-semibold ${orderBg}`}
+                    style={{ left: "78px", width: "90px", minWidth: "90px" }}
+                  >
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
                       className="text-gray-900 hover:underline dark:text-gray-100"
@@ -877,7 +1051,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 상품명 */}
                   <td
-                    className={`${tdBase} sticky left-[166px] z-20 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : getProgressBgColor(itemProgress)}`}
+                    className={`${tdBase} sticky z-20 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : getProgressBgColor(itemProgress)}`}
+                    style={{ left: "168px", minWidth: "300px" }}
                     title={item.product_name}
                   >
                     {isEditingItem(id, "product_name") ? (
