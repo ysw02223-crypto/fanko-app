@@ -54,4 +54,7 @@ export type OrderItemRow = {
   prepayment_rub: string;
   extra_payment_rub: string;
   krw: string | null;
+  progress: string | null;
+  gift: string | null;
+  photo_sent: string | null;
 };
