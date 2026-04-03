@@ -1,7 +1,7 @@
 "use client";
 
 import { createOrderWithItemsAction, type NewOrderLinePayload } from "@/lib/actions/orders";
-import { ORDER_ROUTES, PLATFORMS, PRODUCT_CATEGORIES, SET_TYPES } from "@/lib/schema";
+import { ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES } from "@/lib/schema";
 import { inputClass, labelClass, selectClass } from "@/lib/form-classes";
 import { useMemo, useState, useTransition, type FormEvent } from "react";
 
@@ -11,6 +11,14 @@ function moscowTodayYmd(): string {
   const mm = String(moscowDate.getMonth() + 1).padStart(2, "0");
   const dd = String(moscowDate.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function detectPlatform(orderNum: string): string {
+  const prefix = orderNum.slice(0, 2);
+  if (prefix === "01") return "avito";
+  if (prefix === "02") return "telegram";
+  if (prefix === "03") return "vk";
+  return "avito";
 }
 
 type LineRow = {
@@ -44,17 +52,40 @@ function lineExtraRub(line: LineRow): string {
   return (p - pre).toLocaleString("ko-KR", { maximumFractionDigits: 2 });
 }
 
+// 컬럼 너비 (px)
+const COL_W = {
+  category: 110,
+  name: 280,
+  option: 120,
+  setType: 90,
+  qty: 55,
+  price: 110,
+  prepay: 110,
+  extra: 110,
+  del: 40,
+} as const;
+
+function wPx(n: number) {
+  return { width: n, minWidth: n, maxWidth: n } as React.CSSProperties;
+}
+
 export function OrderCreateForm() {
   const today = useMemo(() => moscowTodayYmd(), []);
+  const [orderNum, setOrderNum] = useState("");
+  const [platform, setPlatform] = useState("avito");
   const [lines, setLines] = useState<LineRow[]>(() => [emptyLine()]);
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const handleOrderNumChange = (v: string) => {
+    setOrderNum(v);
+    setPlatform(detectPlatform(v));
+  };
 
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (id: string) => {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.id !== id)));
   };
-
   const updateLine = (id: string, patch: Partial<LineRow>) => {
     setLines((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
@@ -64,7 +95,6 @@ export function OrderCreateForm() {
     setFormError(null);
     const fd = new FormData(e.currentTarget);
     const order_num = String(fd.get("order_num") ?? "").trim();
-    const platform = String(fd.get("platform") ?? "");
     const order_type = String(fd.get("order_type") ?? "");
     const date = String(fd.get("date") ?? "").trim();
     const customer_name = String(fd.get("customer_name") ?? "").trim();
@@ -142,25 +172,37 @@ export function OrderCreateForm() {
   const cellSelect = `${selectClass} !py-1.5 text-sm`;
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <form
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+    >
       <input type="hidden" name="progress" value="PAY" />
+      <input type="hidden" name="platform" value={platform} />
 
+      {/* ── 상단 주문 정보 2열 그리드 ── */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>주문번호 *</span>
-          <input name="order_num" required className={inputClass} placeholder="예: 1080800" autoComplete="off" />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>플랫폼 *</span>
-          <select name="platform" required className={selectClass} defaultValue="avito">
-            {PLATFORMS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* 주문번호 */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="order_num" className={labelClass}>
+            주문번호 *
+          </label>
+          <input
+            id="order_num"
+            name="order_num"
+            required
+            className={inputClass}
+            placeholder="예: 0212345"
+            autoComplete="off"
+            value={orderNum}
+            onChange={(e) => handleOrderNumChange(e.target.value)}
+          />
+          <span className="text-xs text-zinc-500">
+            플랫폼: <span className="font-medium text-zinc-700 dark:text-zinc-300">{platform}</span>
+            {"  "}(01=avito · 02=telegram · 03=vk)
+          </span>
+        </div>
 
+        {/* 주문 경로 */}
         <label className="flex flex-col gap-1">
           <span className={labelClass}>주문 경로 *</span>
           <select name="order_type" required className={selectClass} defaultValue="KOREA">
@@ -171,49 +213,67 @@ export function OrderCreateForm() {
             ))}
           </select>
         </label>
+
+        {/* 고객명 */}
         <label className="flex flex-col gap-1">
           <span className={labelClass}>고객명</span>
           <input name="customer_name" className={inputClass} autoComplete="off" />
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-2">
-          <span className={labelClass}>주문일 *</span>
-          <input name="date" type="date" required className={inputClass} defaultValue={today} />
-          <span className="text-xs text-zinc-500">기본값: 모스크바 기준 오늘 날짜 (필요 시 변경 가능)</span>
-        </label>
-
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        {/* 선물 여부 */}
+        <label className="flex flex-col gap-1">
           <span className={labelClass}>선물 여부</span>
           <select name="gift" className={selectClass} defaultValue="no">
             <option value="no">no</option>
             <option value="ask">ask</option>
           </select>
         </label>
+
+        {/* 주문일 — 전체 너비 */}
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <label htmlFor="date" className={labelClass}>
+            주문일 *
+          </label>
+          <input id="date" name="date" type="date" required className={inputClass} defaultValue={today} />
+          <span className="text-xs text-zinc-500">기본값: 모스크바 기준 오늘 날짜 (필요 시 변경 가능)</span>
+        </div>
       </div>
 
+      {/* ── 상품 테이블 ── */}
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">상품</h2>
         <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <table className="w-max min-w-full border-collapse text-left text-sm">
+          <table className="border-collapse text-left text-sm" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={wPx(COL_W.category)} />
+              <col style={wPx(COL_W.name)} />
+              <col style={wPx(COL_W.option)} />
+              <col style={wPx(COL_W.setType)} />
+              <col style={wPx(COL_W.qty)} />
+              <col style={wPx(COL_W.price)} />
+              <col style={wPx(COL_W.prepay)} />
+              <col style={wPx(COL_W.extra)} />
+              <col style={wPx(COL_W.del)} />
+            </colgroup>
             <thead>
               <tr>
-                <th className={th}>카테고리</th>
-                <th className={th}>상품명 *</th>
-                <th className={th}>옵션</th>
-                <th className={th}>단품/세트</th>
-                <th className={`${th} text-right`}>수량</th>
-                <th className={`${th} text-right`}>판매가₽ *</th>
-                <th className={`${th} text-right`}>선결제₽</th>
-                <th className={`${th} text-right`}>잔금₽</th>
-                <th className={`${th} w-12 text-center`}>삭제</th>
+                <th className={th} style={wPx(COL_W.category)}>카테고리</th>
+                <th className={th} style={wPx(COL_W.name)}>상품명 *</th>
+                <th className={th} style={wPx(COL_W.option)}>옵션</th>
+                <th className={th} style={wPx(COL_W.setType)}>단품/세트</th>
+                <th className={`${th} text-right`} style={wPx(COL_W.qty)}>수량</th>
+                <th className={`${th} text-right`} style={wPx(COL_W.price)}>판매가₽ *</th>
+                <th className={`${th} text-right`} style={wPx(COL_W.prepay)}>선결제₽</th>
+                <th className={`${th} text-right`} style={wPx(COL_W.extra)}>잔금₽</th>
+                <th className={`${th} text-center`} style={wPx(COL_W.del)}>삭제</th>
               </tr>
             </thead>
             <tbody>
               {lines.map((line) => (
                 <tr key={line.id}>
-                  <td className={td}>
+                  <td className={td} style={wPx(COL_W.category)}>
                     <select
-                      className={cellSelect}
+                      className={`${cellSelect} w-full`}
                       value={line.product_type}
                       onChange={(e) => updateLine(line.id, { product_type: e.target.value })}
                     >
@@ -225,24 +285,24 @@ export function OrderCreateForm() {
                       ))}
                     </select>
                   </td>
-                  <td className={td}>
+                  <td className={td} style={wPx(COL_W.name)}>
                     <input
-                      className={cellInput}
+                      className={`${cellInput} w-full`}
                       value={line.product_name}
                       onChange={(e) => updateLine(line.id, { product_name: e.target.value })}
                       placeholder="필수"
                     />
                   </td>
-                  <td className={td}>
+                  <td className={td} style={wPx(COL_W.option)}>
                     <input
-                      className={cellInput}
+                      className={`${cellInput} w-full`}
                       value={line.product_option}
                       onChange={(e) => updateLine(line.id, { product_option: e.target.value })}
                     />
                   </td>
-                  <td className={td}>
+                  <td className={td} style={wPx(COL_W.setType)}>
                     <select
-                      className={cellSelect}
+                      className={`${cellSelect} w-full`}
                       value={line.product_set_type}
                       onChange={(e) => updateLine(line.id, { product_set_type: e.target.value })}
                     >
@@ -253,42 +313,49 @@ export function OrderCreateForm() {
                       ))}
                     </select>
                   </td>
-                  <td className={td}>
+                  <td className={td} style={wPx(COL_W.qty)}>
                     <input
                       type="number"
                       min={1}
-                      className={`${cellInput} text-right tabular-nums`}
+                      max={9}
+                      maxLength={1}
+                      className={`${cellInput} w-full text-right tabular-nums`}
                       value={line.quantity}
                       onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
                     />
                   </td>
-                  <td className={td}>
+                  <td className={td} style={wPx(COL_W.price)}>
                     <input
                       type="number"
                       step="0.01"
-                      className={`${cellInput} text-right tabular-nums`}
+                      max={9999999}
+                      className={`${cellInput} w-full text-right tabular-nums`}
                       value={line.price_rub}
                       onChange={(e) => updateLine(line.id, { price_rub: e.target.value })}
                       placeholder="필수"
                     />
                   </td>
-                  <td className={td}>
+                  <td className={td} style={wPx(COL_W.prepay)}>
                     <input
                       type="number"
                       step="0.01"
-                      className={`${cellInput} text-right tabular-nums`}
+                      max={9999999}
+                      className={`${cellInput} w-full text-right tabular-nums`}
                       value={line.prepayment_rub}
                       onChange={(e) => updateLine(line.id, { prepayment_rub: e.target.value })}
                     />
                   </td>
-                  <td className={`${td} text-right tabular-nums text-zinc-700 dark:text-zinc-300`}>
+                  <td
+                    className={`${td} text-right tabular-nums text-zinc-700 dark:text-zinc-300`}
+                    style={wPx(COL_W.extra)}
+                  >
                     {lineExtraRub(line)}
                   </td>
-                  <td className={`${td} text-center`}>
+                  <td className={`${td} text-center`} style={wPx(COL_W.del)}>
                     <button
                       type="button"
                       disabled={lines.length <= 1}
-                      className="rounded-md px-2 py-1 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/40"
+                      className="rounded-md px-1.5 py-1 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/40"
                       aria-label="행 삭제"
                       onClick={() => removeLine(line.id)}
                     >
