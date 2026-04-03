@@ -129,8 +129,8 @@ function linesToInsertRows(lines: LineRow[], orderNum: string) {
 const COL_W = {
   category: 120,
   option: 200,
-  setType: 80,
-  qty: 50,
+  setType: 90,
+  qty: 64,
   price: 100,
   prepay: 100,
   extra: 90,
@@ -375,8 +375,11 @@ export function OrderCreateForm() {
   // ── styles ───────────────────────────────────────────────────────────────────
 
   const th =
-    "whitespace-nowrap border-b border-zinc-200 bg-zinc-50 px-2 py-2 text-left text-xs font-semibold text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400";
-  const td = "border-b border-zinc-200/80 px-2 py-1.5 align-middle dark:border-zinc-700/80";
+    "whitespace-nowrap border-b-2 border-r border-b-gray-300 border-r-gray-200 bg-gray-50 px-2 py-2 text-left text-xs font-semibold text-zinc-600 dark:border-b-zinc-600 dark:border-r-zinc-700 dark:bg-zinc-900 dark:text-zinc-400";
+  const thLast =
+    "whitespace-nowrap border-b-2 border-b-gray-300 bg-gray-50 px-2 py-2 text-center text-xs font-semibold text-zinc-600 dark:border-b-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
+  const td = "border-b border-r border-b-gray-100 border-r-gray-100 px-2 py-1.5 align-middle dark:border-b-zinc-800 dark:border-r-zinc-800";
+  const tdLast = "border-b border-b-gray-100 px-2 py-1.5 align-middle text-center dark:border-b-zinc-800";
   const cellInput = `${inputClass} !py-1.5 text-sm`;
   const cellSelect = `${selectClass} !py-1.5 text-sm`;
   const compactInput =
@@ -642,11 +645,11 @@ export function OrderCreateForm() {
                   <th className={th}>상품명 *</th>
                   <th className={th}>옵션</th>
                   <th className={th}>단품/세트</th>
-                  <th className={`${th} text-right`}>수량</th>
+                  <th className={`${th} text-center`}>수량</th>
                   <th className={`${th} text-right`}>판매가₽ *</th>
                   <th className={`${th} text-right`}>선결제₽</th>
                   <th className={`${th} text-right`}>잔금₽</th>
-                  <th className={`${th} text-center`}>삭제</th>
+                  <th className={thLast}>삭제</th>
                 </tr>
               </thead>
               <tbody>
@@ -654,15 +657,14 @@ export function OrderCreateForm() {
                   <tr key={line.id}>
                     <td className={td}>
                       <select
-                        className={`${cellSelect} w-full`}
+                        className={`${cellSelect} w-full text-left`}
+                        style={{ paddingLeft: "6px" }}
                         value={line.product_type}
                         onChange={(e) => updateLine(line.id, { product_type: e.target.value })}
                       >
                         <option value="">—</option>
                         {PRODUCT_CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
+                          <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
                     </td>
@@ -683,14 +685,13 @@ export function OrderCreateForm() {
                     </td>
                     <td className={td}>
                       <select
-                        className={`${cellSelect} w-full`}
+                        className={`${cellSelect} w-full text-left`}
+                        style={{ paddingLeft: "6px" }}
                         value={line.product_set_type}
                         onChange={(e) => updateLine(line.id, { product_set_type: e.target.value })}
                       >
                         {SET_TYPES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
+                          <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
                     </td>
@@ -698,10 +699,9 @@ export function OrderCreateForm() {
                       <input
                         type="number"
                         min={1}
-                        max={9}
-                        maxLength={1}
+                        max={99}
                         placeholder="1"
-                        className={`${cellInput} w-full text-right tabular-nums`}
+                        className={`${cellInput} w-full text-center tabular-nums`}
                         value={line.quantity}
                         onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
                       />
@@ -730,7 +730,7 @@ export function OrderCreateForm() {
                     <td className={`${td} text-right tabular-nums text-zinc-700 dark:text-zinc-300`}>
                       {lineExtraRub(line)}
                     </td>
-                    <td className={`${td} text-center`}>
+                    <td className={tdLast}>
                       <button
                         type="button"
                         disabled={lines.length <= 1}
