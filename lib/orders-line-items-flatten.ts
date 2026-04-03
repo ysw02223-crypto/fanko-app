@@ -7,7 +7,6 @@ export type OrderWithNestedItems = OrderRow & {
 export type FlatOrderItemRow = {
   order: OrderRow;
   item: OrderItemRow | null;
-  isFirstInOrder: boolean;
   groupColorIndex: number;
 };
 
@@ -17,10 +16,10 @@ export function flattenOrders(orders: OrderWithNestedItems[]): FlatOrderItemRow[
     const items = order.order_items ?? [];
     const groupColorIndex = orderIdx;
     if (items.length === 0) {
-      out.push({ order, item: null, isFirstInOrder: true, groupColorIndex });
+      out.push({ order, item: null, groupColorIndex });
     } else {
-      items.forEach((item, i) => {
-        out.push({ order, item, isFirstInOrder: i === 0, groupColorIndex });
+      items.forEach((item) => {
+        out.push({ order, item, groupColorIndex });
       });
     }
   });
