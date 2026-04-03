@@ -57,22 +57,22 @@ type EditTarget =
   | { kind: "item"; rowKey: string; itemId: string; orderNum: string; field: ItemEditableField };
 
 const ORDER_FIELD_LABELS: Record<OrderEditableField, string> = {
-  customer_name: "고객명",
-  purchase_channel: "거래처",
+  customer_name: "고객�?,
+  purchase_channel: "거래�?,
 };
 
 const ITEM_FIELD_LABELS: Record<ItemEditableField, string> = {
   product_type: "카테고리",
-  product_name: "상품명",
-  product_option: "옵션",
-  product_set_type: "단품/세트",
-  quantity: "수량",
-  price_rub: "판매가₽",
-  prepayment_rub: "선결제₽",
-  krw: "원화매입",
+  product_name: "?�품�?,
+  product_option: "?�션",
+  product_set_type: "?�품/?�트",
+  quantity: "?�량",
+  price_rub: "?�매가??,
+  prepayment_rub: "?�결?�₽",
+  krw: "?�화매입",
   progress: "진행",
-  gift: "선물",
-  photo_sent: "사진",
+  gift: "?�물",
+  photo_sent: "?�진",
 };
 
 type HistoryEntry = {
@@ -103,15 +103,15 @@ function progressBadgeClass(p: string) {
 
 function fmtRub(n: string | number | null | undefined) {
   const v = Number(n ?? 0);
-  if (!v || !Number.isFinite(v)) return "—";
-  return `${v.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} ₽`;
+  if (!v || !Number.isFinite(v)) return "??;
+  return `${v.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} ??;
 }
 
 function fmtKrw(n: string | number | null | undefined) {
-  if (n === null || n === undefined || n === "") return "—";
+  if (n === null || n === undefined || n === "") return "??;
   const v = Number(n);
-  if (!v || !Number.isFinite(v)) return "—";
-  return `${v.toLocaleString("ko-KR", { maximumFractionDigits: 0 })} ₩`;
+  if (!v || !Number.isFinite(v)) return "??;
+  return `${v.toLocaleString("ko-KR", { maximumFractionDigits: 0 })} ??;
 }
 
 function displayName(name: string, option: string | null | undefined): string {
@@ -125,18 +125,18 @@ function computedExtra(item: OrderItemRow | null) {
 }
 
 function displayOrderField(field: OrderEditableField, raw: string): string {
-  return raw.trim() === "" ? "—" : raw;
+  return raw.trim() === "" ? "?? : raw;
 }
 
 function displayItemField(field: ItemEditableField, raw: string): string {
-  if (field === "product_type" && raw === "") return "—";
+  if (field === "product_type" && raw === "") return "??;
   if (field === "quantity" || field === "price_rub" || field === "prepayment_rub" || field === "krw") {
-    if (raw.trim() === "") return "—";
+    if (raw.trim() === "") return "??;
     if (field === "quantity") return raw;
     if (field === "krw") return fmtKrw(raw);
     return fmtRub(raw);
   }
-  return raw.trim() === "" ? "—" : raw;
+  return raw.trim() === "" ? "?? : raw;
 }
 
 const thClass =
@@ -358,7 +358,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     let touchOriginY = 0;
     let touchSession = false;
 
-    /** 드래그 스크롤 시작만 막음(포커스 입력). 버튼/링크 셀에서는 드래그로 스크롤 가능. */
+    /** ?�래�??�크�??�작�?막음(?�커???�력). 버튼/링크 ?�?�서???�래그로 ?�크�?가?? */
     const blocksScrollDragStart = (target: EventTarget | null) => {
       const t = target as HTMLElement | null;
       if (!t) return false;
@@ -484,8 +484,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   }, []);
 
   /**
-   * select 필드 즉시 저장 — savingRef 없이 직접 DB 업데이트 후 해당 order 전체 리프레시.
-   * progress / gift / photo_sent / product_set_type / product_type 에 사용.
+   * select ?�드 즉시 ?�????savingRef ?�이 직접 DB ?�데?�트 ???�당 order ?�체 리프?�시.
+   * progress / gift / photo_sent / product_set_type / product_type ???�용.
    */
   const quickSaveItem = useCallback(
     async (itemId: string, orderNum: string, field: string, value: unknown) => {
@@ -495,7 +495,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         .update({ [field]: value })
         .eq("id", itemId);
       if (error) {
-        showError(`저장 실패: ${error.message}`);
+        showError(`?�???�패: ${error.message}`);
         setEditing(null);
         return;
       }
@@ -505,7 +505,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         .eq("order_num", orderNum)
         .single();
       if (fetchErr || !data) {
-        showError(fetchErr?.message ?? "데이터 새로고침 실패");
+        showError(fetchErr?.message ?? "?�이???�로고침 ?�패");
         setEditing(null);
         return;
       }
@@ -538,7 +538,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         .eq("order_num", orderNum)
         .single();
       if (fetchErr || !data) {
-        showError(fetchErr?.message ?? "주문을 다시 불러오지 못했습니다.");
+        showError(fetchErr?.message ?? "주문???�시 불러?��? 못했?�니??");
         return;
       }
       setFlatRows((prev) => replaceOrderSegment(prev, orderNum, data as OrderWithNestedItems));
@@ -560,7 +560,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         .eq("order_num", orderNum)
         .single();
       if (orderErr || !orderFresh) {
-        showError(orderErr?.message ?? "주문을 다시 불러오지 못했습니다.");
+        showError(orderErr?.message ?? "주문???�시 불러?��? 못했?�니??");
         return;
       }
       setFlatRows((prev) => replaceOrderSegment(prev, orderNum, orderFresh as OrderWithNestedItems));
@@ -576,7 +576,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       if (field === "purchase_channel") {
         return { payload: { purchase_channel: raw.trim() === "" ? null : raw.trim() } };
       }
-      return { error: "알 수 없는 필드입니다." };
+      return { error: "?????�는 ?�드?�니??" };
     },
     [],
   );
@@ -597,55 +597,55 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       const prep = Number(current.prepayment_rub);
       if (field === "product_type") {
         if (raw !== "" && !(PRODUCT_CATEGORIES as readonly string[]).includes(raw)) {
-          return { error: "카테고리가 올바르지 않습니다." };
+          return { error: "카테고리가 ?�바르�? ?�습?�다." };
         }
         return { updates: { product_type: raw === "" ? null : raw } };
       }
       if (field === "product_name") {
         const name = raw.trim();
-        if (!name) return { error: "상품명은 비울 수 없습니다." };
+        if (!name) return { error: "?�품명�? 비울 ???�습?�다." };
         return { updates: { product_name: name } };
       }
       if (field === "product_option") {
         return { updates: { product_option: raw.trim() === "" ? null : raw.trim() } };
       }
       if (field === "product_set_type") {
-        if (!(SET_TYPES as readonly string[]).includes(raw)) return { error: "단품/세트 값이 올바르지 않습니다." };
+        if (!(SET_TYPES as readonly string[]).includes(raw)) return { error: "?�품/?�트 값이 ?�바르�? ?�습?�다." };
         return { updates: { product_set_type: raw } };
       }
       if (field === "quantity") {
         const q = Math.floor(Number(raw));
-        if (!Number.isFinite(q) || q < 1) return { error: "수량은 1 이상이어야 합니다." };
+        if (!Number.isFinite(q) || q < 1) return { error: "?�량?� 1 ?�상?�어???�니??" };
         return { updates: { quantity: q } };
       }
       if (field === "price_rub") {
         const pr = Number(raw);
-        if (!Number.isFinite(pr)) return { error: "판매가를 확인하세요." };
+        if (!Number.isFinite(pr)) return { error: "?�매가�??�인?�세??" };
         return { updates: { price_rub: pr, extra_payment_rub: pr - prep } };
       }
       if (field === "prepayment_rub") {
         const p = Number(raw);
-        if (!Number.isFinite(p)) return { error: "선결제를 확인하세요." };
+        if (!Number.isFinite(p)) return { error: "?�결?��? ?�인?�세??" };
         return { updates: { prepayment_rub: p, extra_payment_rub: price - p } };
       }
       if (field === "krw") {
         const t = raw.trim();
         const k = t === "" ? null : Math.round(Number(t));
-        if (k !== null && !Number.isFinite(k)) return { error: "원화매입을 확인하세요." };
+        if (k !== null && !Number.isFinite(k)) return { error: "?�화매입???�인?�세??" };
         return { updates: { krw: k } };
       }
       if (field === "progress") {
-        if (!(ORDER_PROGRESS as readonly string[]).includes(raw)) return { error: "진행 상태가 올바르지 않습니다." };
+        if (!(ORDER_PROGRESS as readonly string[]).includes(raw)) return { error: "진행 ?�태가 ?�바르�? ?�습?�다." };
         return { updates: { progress: raw } };
       }
       if (field === "gift") {
         return { updates: { gift: raw === "ask" ? "ask" : "no" } };
       }
       if (field === "photo_sent") {
-        if (!(PHOTO_STATUS as readonly string[]).includes(raw)) return { error: "사진 발송 상태가 올바르지 않습니다." };
+        if (!(PHOTO_STATUS as readonly string[]).includes(raw)) return { error: "?�진 발송 ?�태가 ?�바르�? ?�습?�다." };
         return { updates: { photo_sent: raw } };
       }
-      return { error: "알 수 없는 필드입니다." };
+      return { error: "?????�는 ?�드?�니??" };
     },
     [],
   );
@@ -676,7 +676,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           .eq("order_num", orderNum)
           .single();
         if (fetchErr || !data) {
-          showError(fetchErr?.message ?? "주문을 다시 불러오지 못했습니다.");
+          showError(fetchErr?.message ?? "주문???�시 불러?��? 못했?�니??");
           return false;
         }
         setFlatRows((prev) => replaceOrderSegment(prev, orderNum, data as OrderWithNestedItems));
@@ -728,7 +728,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           .eq("order_num", orderNum)
           .single();
         if (orderErr || !orderFresh) {
-          showError(orderErr?.message ?? "주문을 다시 불러오지 못했습니다.");
+          showError(orderErr?.message ?? "주문???�시 불러?��? 못했?�니??");
           return false;
         }
         setFlatRows((prev) => replaceOrderSegment(prev, orderNum, orderFresh as OrderWithNestedItems));
@@ -815,7 +815,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         >
           {label}
           {active ? ` · ${filters[field]}` : ""}
-          <span className="opacity-50 text-xs">▾</span>
+          <span className="opacity-50 text-xs">??/span>
         </button>
         {openFilter === field && (
           <div className="absolute left-0 top-full z-50 mt-1 min-w-[150px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
@@ -855,21 +855,21 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
       {historyOpen ? (
         <div className="fixed inset-0 z-[105] flex justify-end bg-black/30" role="presentation">
-          <button type="button" className="h-full flex-1 cursor-default" aria-label="닫기" onClick={() => setHistoryOpen(false)} />
+          <button type="button" className="h-full flex-1 cursor-default" aria-label="?�기" onClick={() => setHistoryOpen(false)} />
           <div className="flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">변경 이력 (최근 10개)</p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">변�??�력 (최근 10�?</p>
               <button
                 type="button"
                 className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 onClick={() => setHistoryOpen(false)}
               >
-                닫기
+                ?�기
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3">
               {history.length === 0 ? (
-                <p className="text-sm text-zinc-500">아직 기록된 변경이 없습니다.</p>
+                <p className="text-sm text-zinc-500">?�직 기록??변경이 ?�습?�다.</p>
               ) : (
                 <ul className="flex flex-col gap-3">
                   {history.map((e) => (
@@ -884,7 +884,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         })}
                       </p>
                       <p className="mt-1 text-zinc-800 dark:text-zinc-200">
-                        주문 {e.orderNum} · {e.columnLabel} · {e.oldDisplay} → {e.newDisplay}
+                        주문 {e.orderNum} · {e.columnLabel} · {e.oldDisplay} ??{e.newDisplay}
                       </p>
                       <button
                         type="button"
@@ -892,7 +892,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         disabled={undoingId !== null}
                         onClick={() => void onHistoryUndo(e)}
                       >
-                        {undoingId === e.id ? "되돌리는 중…" : "되돌리기"}
+                        {undoingId === e.id ? "?�돌리는 중�? : "?�돌리기"}
                       </button>
                     </li>
                   ))}
@@ -908,53 +908,53 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         className="fixed bottom-20 right-4 z-[90] rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-md hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
         onClick={() => setHistoryOpen(true)}
       >
-        변경 이력 {history.length > 0 ? `(${history.length})` : ""}
+        변�??�력 {history.length > 0 ? `(${history.length})` : ""}
       </button>
 
-      {/* 필터 바 — crm-subheader-portal (main 바깥 sticky 슬롯)으로 portal 렌더링 */}
+      {/* ?�터 �???crm-subheader-portal (main 바깥 sticky ?�롯)?�로 portal ?�더�?*/}
       {portalEl && createPortal(
         <div className="w-full border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
           <div className="flex flex-wrap items-center gap-2">
             <FilterDropdown
               label="진행"
               field="progress"
-              options={[{ label: "전체", value: "" }, ...ORDER_PROGRESS.map((p) => ({ label: p, value: p }))]}
+              options={[{ label: "?�체", value: "" }, ...ORDER_PROGRESS.map((p) => ({ label: p, value: p }))]}
             />
             <FilterDropdown
-              label="플랫폼"
+              label="?�랫??
               field="platform"
-              options={[{ label: "전체", value: "" }, ...PLATFORMS.map((p) => ({ label: p, value: p }))]}
+              options={[{ label: "?�체", value: "" }, ...PLATFORMS.map((p) => ({ label: p, value: p }))]}
             />
             <FilterDropdown
-              label="단품/세트"
+              label="?�품/?�트"
               field="setType"
               options={[
-                { label: "전체", value: "" },
+                { label: "?�체", value: "" },
                 { label: "Single", value: "Single" },
                 { label: "SET", value: "SET" },
               ]}
             />
             <FilterDropdown
-              label="선물"
+              label="?�물"
               field="gift"
               options={[
-                { label: "전체", value: "" },
+                { label: "?�체", value: "" },
                 { label: "no", value: "no" },
                 { label: "ask", value: "ask" },
               ]}
             />
             <FilterDropdown
-              label="사진"
+              label="?�진"
               field="photoSent"
-              options={[{ label: "전체", value: "" }, ...PHOTO_STATUS.map((s) => ({ label: s, value: s }))]}
+              options={[{ label: "?�체", value: "" }, ...PHOTO_STATUS.map((s) => ({ label: s, value: s }))]}
             />
             <FilterDropdown
-              label="잔금"
+              label="?�금"
               field="hasBalance"
               options={[
-                { label: "전체", value: "" },
-                { label: "잔금 있음", value: "yes" },
-                { label: "잔금 없음", value: "no" },
+                { label: "?�체", value: "" },
+                { label: "?�금 ?�음", value: "yes" },
+                { label: "?�금 ?�음", value: "no" },
               ]}
             />
             {hasActiveFilter && (
@@ -965,12 +965,11 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                 }
                 className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
               >
-                초기화
-              </button>
+                초기??              </button>
             )}
             <input
               type="text"
-              placeholder="주문번호·상품명·고객·옵션 검색…"
+              placeholder="주문번호·?�품명·고객·옵??검?��?
               className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
               style={{ minWidth: "220px" }}
               value={searchQuery}
@@ -982,7 +981,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       )}
 
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        주문 {orderCount}건 · 표시 행 {lineCount}줄 · 테이블을 드래그하면 좌우로 스크롤됩니다.
+        주문 {orderCount}�?· ?�시 ??{lineCount}�?· ?�이블을 ?�래그하�?좌우�??�크롤됩?�다.
       </p>
 
       <div
@@ -1015,36 +1014,36 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           <thead>
             <tr>
               {/* sticky: # */}
-              <th className={`${thClass} sticky top-[105px] z-30`} style={{ left: 0, width: "32px", minWidth: "32px" }}>#</th>
-              {/* sticky: 날짜 */}
-              <th className={`${thClass} sticky top-[105px] z-30`} style={{ left: "32px", width: "46px", minWidth: "46px" }}>날짜</th>
+              <th className={`${thClass} sticky top-[108px] z-30`} style={{ left: 0, width: "32px", minWidth: "32px" }}>#</th>
+              {/* sticky: ?�짜 */}
+              <th className={`${thClass} sticky top-[108px] z-30`} style={{ left: "32px", width: "46px", minWidth: "46px" }}>?�짜</th>
               {/* sticky: 주문번호 */}
-              <th className={`${thClass} sticky top-[105px] z-30`} style={{ left: "78px", width: "90px", minWidth: "90px" }}>주문번호</th>
-              {/* sticky: 상품명 */}
-              <th className={`${thClass} sticky top-[105px] z-30 text-left`} style={{ left: "168px", minWidth: "300px" }}>상품명</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[180px] text-left`}>옵션</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[112px]`}>진행</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[72px]`}>단품/세트</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[52px]`}>선물</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>사진</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[100px]`}>일자</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[72px]`}>플랫폼</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[72px]`}>경로</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[100px]`}>고객</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>거래처</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>카테고리</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[48px]`}>수량</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>판매가₽</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>원화매입</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[80px]`}>선결제₽</th>
-              <th className={`${thClass} sticky top-[105px] z-20 min-w-[72px] border-r-0`}>잔금₽</th>
+              <th className={`${thClass} sticky top-[108px] z-30`} style={{ left: "78px", width: "90px", minWidth: "90px" }}>주문번호</th>
+              {/* sticky: ?�품�?*/}
+              <th className={`${thClass} sticky top-[108px] z-30 text-left`} style={{ left: "168px", minWidth: "300px" }}>?�품�?/th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[180px] text-left`}>?�션</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[112px]`}>진행</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[72px]`}>?�품/?�트</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[52px]`}>?�물</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>?�진</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[100px]`}>?�자</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[72px]`}>?�랫??/th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[72px]`}>경로</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[100px]`}>고객</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>거래�?/th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>카테고리</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[48px]`}>?�량</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>?�매가??/th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>?�화매입</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[80px]`}>?�결?�₽</th>
+              <th className={`${thClass} sticky top-[108px] z-20 min-w-[72px] border-r-0`}>?�금??/th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
                 <td colSpan={19} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
-                  검색 결과가 없습니다.
+                  검??결과가 ?�습?�다.
                 </td>
               </tr>
             ) : null}
@@ -1060,7 +1059,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
               return (
                 <tr key={rowKey}>
-                  {/* # 줄 번호 */}
+                  {/* # �?번호 */}
                   <td
                     className={`${tdBase} sticky z-20 border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}
                     style={{ left: 0, width: "32px", minWidth: "32px" }}
@@ -1068,7 +1067,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     {idx + 1}
                   </td>
 
-                  {/* 날짜 */}
+                  {/* ?�짜 */}
                   <td
                     className={`${tdBase} sticky z-20 whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${dateBgClass(computedExtra(item))}`}
                     style={{ left: "32px", width: "46px", minWidth: "46px" }}
@@ -1076,7 +1075,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     {order.date ? (() => {
                       const d = new Date(order.date);
                       return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-                    })() : "—"}
+                    })() : "??}
                   </td>
 
                   {/* 주문번호 */}
@@ -1092,7 +1091,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     </Link>
                   </td>
 
-                  {/* 상품명 */}
+                  {/* ?�품�?*/}
                   <td
                     className={`${tdBase} sticky z-20 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : getProgressBgColor(itemProgress)}`}
                     style={{ left: "168px", minWidth: "300px" }}
@@ -1122,7 +1121,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 옵션 */}
+                  {/* ?�션 */}
                   <td
                     className={`${tdBase} text-left ${isEditingItem(id, "product_option") ? editingBg : getProgressBgColor(itemProgress)}`}
                     title={item.product_option ?? ""}
@@ -1148,7 +1147,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                           startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_option" }, item.product_option ?? "")
                         }
                       >
-                        {item.product_option ?? "—"}
+                        {item.product_option ?? "??}
                       </button>
                     )}
                   </td>
@@ -1181,7 +1180,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 단품/세트 */}
+                  {/* ?�품/?�트 */}
                   <td className={`${tdBase} ${isEditingItem(id, "product_set_type") ? editingBg : getSetTypeBg(item.product_set_type)}`}>
                     {isEditingItem(id, "product_set_type") ? (
                       <select
@@ -1213,7 +1212,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 선물 */}
+                  {/* ?�물 */}
                   <td className={`${tdBase} ${isEditingItem(id, "gift") ? editingBg : getGiftBg(itemGift)}`}>
                     {isEditingItem(id, "gift") ? (
                       <select
@@ -1240,7 +1239,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 사진 */}
+                  {/* ?�진 */}
                   <td className={`${tdBase} ${isEditingItem(id, "photo_sent") ? editingBg : getPhotoSentBg(itemPhotoSent)}`}>
                     {isEditingItem(id, "photo_sent") ? (
                       <select
@@ -1268,10 +1267,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 일자 */}
+                  {/* ?�자 */}
                   <td className={`${tdBase} whitespace-nowrap ${whiteBg}`}>{order.date?.slice(0, 10)}</td>
 
-                  {/* 플랫폼 */}
+                  {/* ?�랫??*/}
                   <td className={`${tdBase} ${whiteBg}`}>{order.platform}</td>
 
                   {/* 경로 */}
@@ -1300,12 +1299,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                           startEdit({ kind: "order", rowKey, orderNum: on, field: "customer_name" }, order.customer_name ?? "")
                         }
                       >
-                        {order.customer_name ?? "—"}
+                        {order.customer_name ?? "??}
                       </button>
                     )}
                   </td>
 
-                  {/* 거래처 */}
+                  {/* 거래�?*/}
                   <td className={`${tdBase} ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : whiteBg}`}>
                     {isEditingOrder(rowKey, "purchase_channel") ? (
                       <input
@@ -1331,7 +1330,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                           )
                         }
                       >
-                        {order.purchase_channel ?? "—"}
+                        {order.purchase_channel ?? "??}
                       </button>
                     )}
                   </td>
@@ -1349,7 +1348,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
-                        <option value="">—</option>
+                        <option value="">??/option>
                         {PRODUCT_CATEGORIES.map((c) => (
                           <option key={c} value={c}>
                             {c}
@@ -1364,12 +1363,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                           startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_type" }, item.product_type ?? "")
                         }
                       >
-                        {item.product_type ?? "—"}
+                        {item.product_type ?? "??}
                       </button>
                     )}
                   </td>
 
-                  {/* 수량 */}
+                  {/* ?�량 */}
                   <td className={`${tdBase} tabular-nums ${isEditingItem(id, "quantity") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "quantity") ? (
                       <input
@@ -1396,7 +1395,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 판매가₽ */}
+                  {/* ?�매가??*/}
                   <td className={`${tdBase} tabular-nums ${isEditingItem(id, "price_rub") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "price_rub") ? (
                       <input
@@ -1423,7 +1422,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 원화매입 */}
+                  {/* ?�화매입 */}
                   <td className={`${tdBase} tabular-nums ${isEditingItem(id, "krw") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "krw") ? (
                       <input
@@ -1450,7 +1449,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 선결제₽ */}
+                  {/* ?�결?�₽ */}
                   <td className={`${tdBase} tabular-nums ${isEditingItem(id, "prepayment_rub") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "prepayment_rub") ? (
                       <input
@@ -1479,7 +1478,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 잔금₽ */}
+                  {/* ?�금??*/}
                   <td className={`${tdBase} border-r-0 tabular-nums text-zinc-700 dark:text-zinc-300 ${whiteBg}`}>
                     {fmtRub(computedExtra(item))}
                   </td>
