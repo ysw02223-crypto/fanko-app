@@ -260,6 +260,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   const tableRef = useRef<HTMLDivElement>(null);
   const headerWrapRef = useRef<HTMLDivElement>(null);
+  const headerTableRef = useRef<HTMLTableElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
@@ -460,13 +461,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   useEffect(() => {
     const bodyEl = tableRef.current;
-    const headerEl = headerWrapRef.current;
-    if (!bodyEl || !headerEl) return;
+    const headerTbl = headerTableRef.current;
+    if (!bodyEl || !headerTbl) return;
     const onScroll = () => {
-      // headerWrapRef는 overflow:hidden이라 scrollLeft 직접 설정 불가
-      // 대신 내부 table을 translate로 이동
-      const tbl = headerEl.querySelector("table") as HTMLElement | null;
-      if (tbl) tbl.style.transform = `translateX(-${bodyEl.scrollLeft}px)`;
+      headerTbl.style.transform = `translateX(-${bodyEl.scrollLeft}px)`;
     };
     onScroll();
     bodyEl.addEventListener("scroll", onScroll);
@@ -1034,6 +1032,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           style={{ top: 108, overflowX: "hidden" }}
         >
           <table
+            ref={headerTableRef}
             className="min-w-full border-collapse text-left text-sm"
             style={{ tableLayout: "fixed", width: "100%", minWidth: 1928 }}
           >
