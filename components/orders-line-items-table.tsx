@@ -260,6 +260,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   const tableRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  const headerScrollInnerRef = useRef<HTMLDivElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
@@ -346,10 +347,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   useEffect(() => {
     const tableEl = tableRef.current;
-    const headerEl = headerRef.current;
-    if (!tableEl || !headerEl) return;
+    const innerEl = headerScrollInnerRef.current;
+    if (!tableEl || !innerEl) return;
     const onScroll = () => {
-      headerEl.scrollLeft = tableEl.scrollLeft;
+      innerEl.style.transform = `translateX(-${tableEl.scrollLeft}px)`;
     };
     tableEl.addEventListener("scroll", onScroll);
     return () => tableEl.removeEventListener("scroll", onScroll);
@@ -1026,81 +1027,89 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       <div className="w-full rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <div
           ref={headerRef}
-          className="sticky top-[108px] z-20 overflow-x-hidden bg-white dark:bg-zinc-950"
-          style={{ overflowX: "hidden" }}
+          className="sticky top-[108px] z-20 bg-white dark:bg-zinc-950"
+          style={{ overflowX: "clip" }}
         >
-          <table className="min-w-full border-collapse text-left text-sm">
+          <div ref={headerScrollInnerRef}>
+          <table
+            className="min-w-full border-collapse text-left text-sm"
+            style={{ tableLayout: "fixed", width: "100%", minWidth: 1928 }}
+          >
             <colgroup>
-              <col style={{ width: "32px", minWidth: "32px" }} />
-              <col style={{ width: "46px", minWidth: "46px" }} />
-              <col style={{ width: "90px", minWidth: "90px" }} />
-              <col style={{ minWidth: "300px" }} />
-              <col style={{ minWidth: "180px" }} />
-              <col style={{ minWidth: "112px" }} />
-              <col style={{ minWidth: "72px" }} />
-              <col style={{ minWidth: "52px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "100px" }} />
-              <col style={{ minWidth: "72px" }} />
-              <col style={{ minWidth: "72px" }} />
-              <col style={{ minWidth: "100px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "48px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "80px" }} />
-              <col style={{ minWidth: "72px" }} />
+              <col style={{ width: "32px" }} />
+              <col style={{ width: "46px" }} />
+              <col style={{ width: "90px" }} />
+              <col style={{ width: "320px" }} />
+              <col style={{ width: "180px" }} />
+              <col style={{ width: "112px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "52px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "100px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "140px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "48px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "72px" }} />
             </colgroup>
             <thead>
               <tr>
-                <th className={thClass} style={{ width: "32px", minWidth: "32px" }}>#</th>
-                <th className={thClass} style={{ width: "46px", minWidth: "46px" }}>날짜</th>
-                <th className={thClass} style={{ width: "90px", minWidth: "90px" }}>주문번호</th>
-                <th className={`${thClass} text-left`} style={{ minWidth: "300px" }}>상품명</th>
-                <th className={`${thClass} min-w-[180px] text-left`}>옵션</th>
-                <th className={`${thClass} min-w-[112px]`}>진행</th>
-                <th className={`${thClass} min-w-[72px]`}>단품/세트</th>
-                <th className={`${thClass} min-w-[52px]`}>선물</th>
-                <th className={`${thClass} min-w-[88px]`}>사진</th>
-                <th className={`${thClass} min-w-[100px]`}>일자</th>
-                <th className={`${thClass} min-w-[72px]`}>플랫폼</th>
-                <th className={`${thClass} min-w-[72px]`}>경로</th>
-                <th className={`${thClass} min-w-[100px]`}>고객</th>
-                <th className={`${thClass} min-w-[88px]`}>거래처</th>
-                <th className={`${thClass} min-w-[88px]`}>카테고리</th>
-                <th className={`${thClass} min-w-[48px]`}>수량</th>
-                <th className={`${thClass} min-w-[88px]`}>판매가₽</th>
-                <th className={`${thClass} min-w-[88px]`}>원화매입</th>
-                <th className={`${thClass} min-w-[80px]`}>선결제₽</th>
-                <th className={`${thClass} min-w-[72px] border-r-0`}>잔금₽</th>
+                <th className={`${thClass} sticky left-0 z-10`}>#</th>
+                <th className={`${thClass} sticky left-[32px] z-10`}>날짜</th>
+                <th className={`${thClass} sticky left-[78px] z-10`}>주문번호</th>
+                <th className={`${thClass} sticky left-[168px] z-10 text-left`}>상품명</th>
+                <th className={`${thClass} text-left`}>옵션</th>
+                <th className={thClass}>진행</th>
+                <th className={thClass}>단품/세트</th>
+                <th className={thClass}>선물</th>
+                <th className={thClass}>사진</th>
+                <th className={thClass}>일자</th>
+                <th className={thClass}>플랫폼</th>
+                <th className={thClass}>경로</th>
+                <th className={thClass}>고객</th>
+                <th className={thClass}>거래처</th>
+                <th className={thClass}>카테고리</th>
+                <th className={thClass}>수량</th>
+                <th className={thClass}>판매가₽</th>
+                <th className={thClass}>원화매입</th>
+                <th className={thClass}>선결제₽</th>
+                <th className={`${thClass} border-r-0`}>잔금₽</th>
               </tr>
             </thead>
           </table>
+          </div>
         </div>
         <div ref={tableRef} style={{ overflowX: "auto", overflowY: "visible" }}>
-          <table className="min-w-full border-collapse text-left text-sm">
+          <table
+            className="min-w-full border-collapse text-left text-sm"
+            style={{ tableLayout: "fixed", width: "100%", minWidth: 1928 }}
+          >
             <colgroup>
-              <col style={{ width: "32px", minWidth: "32px" }} />
-              <col style={{ width: "46px", minWidth: "46px" }} />
-              <col style={{ width: "90px", minWidth: "90px" }} />
-              <col style={{ minWidth: "300px" }} />
-              <col style={{ minWidth: "180px" }} />
-              <col style={{ minWidth: "112px" }} />
-              <col style={{ minWidth: "72px" }} />
-              <col style={{ minWidth: "52px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "100px" }} />
-              <col style={{ minWidth: "72px" }} />
-              <col style={{ minWidth: "72px" }} />
-              <col style={{ minWidth: "100px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "48px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "88px" }} />
-              <col style={{ minWidth: "80px" }} />
-              <col style={{ minWidth: "72px" }} />
+              <col style={{ width: "32px" }} />
+              <col style={{ width: "46px" }} />
+              <col style={{ width: "90px" }} />
+              <col style={{ width: "320px" }} />
+              <col style={{ width: "180px" }} />
+              <col style={{ width: "112px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "52px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "100px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "140px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "48px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "72px" }} />
             </colgroup>
             <thead className="sr-only">
               <tr>
@@ -1148,7 +1157,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                 <tr key={rowKey}>
                   {/* # 줄 번호 */}
                   <td
-                    className={`${tdBase} sticky z-20 border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}
+                    className={`${tdBase} sticky z-10 border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}
                     style={{ left: 0, width: "32px", minWidth: "32px" }}
                   >
                     {idx + 1}
@@ -1156,7 +1165,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 날짜 */}
                   <td
-                    className={`${tdBase} sticky z-20 whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${dateBgClass(computedExtra(item))}`}
+                    className={`${tdBase} sticky z-10 whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${dateBgClass(computedExtra(item))}`}
                     style={{ left: "32px", width: "46px", minWidth: "46px" }}
                   >
                     {order.date ? (() => {
@@ -1167,7 +1176,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 주문번호 */}
                   <td
-                    className={`${tdBase} sticky z-20 border-r-gray-300 font-semibold ${orderBg}`}
+                    className={`${tdBase} sticky z-10 border-r-gray-300 font-semibold ${orderBg}`}
                     style={{ left: "78px", width: "90px", minWidth: "90px" }}
                   >
                     <Link
@@ -1180,8 +1189,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 상품명 */}
                   <td
-                    className={`${tdBase} sticky z-20 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : getProgressBgColor(itemProgress)}`}
-                    style={{ left: "168px", minWidth: "300px" }}
+                    className={`${tdBase} sticky z-10 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : getProgressBgColor(itemProgress)}`}
+                    style={{ left: "168px", width: "320px", minWidth: "320px" }}
                     title={item.product_name}
                   >
                     {isEditingItem(id, "product_name") ? (
