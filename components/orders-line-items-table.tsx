@@ -139,7 +139,7 @@ function displayItemField(field: ItemEditableField, raw: string): string {
 
 const thClass =
   "whitespace-nowrap border-b-2 border-r border-zinc-300 bg-zinc-50 px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
-const tdBase = "border-b border-r border-zinc-200 px-2 py-1 align-middle text-center text-sm dark:border-zinc-700";
+const tdBase = "border-b border-r border-zinc-200 px-2 py-0.5 align-middle text-center text-sm dark:border-zinc-700";
 const cellBtn =
   "w-full cursor-pointer rounded px-1 py-0.5 text-center transition hover:bg-black/5 dark:hover:bg-white/10";
 const cellBtnLeft =
@@ -197,6 +197,24 @@ function getOrderBgColor(orderNum: string): string {
   const hash = orderNum.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return ORDER_BG_COLORS[hash % ORDER_BG_COLORS.length];
 }
+
+function getProgressBgColor(progress: string): string {
+  switch (progress) {
+    case "PAY":           return "bg-blue-50 dark:bg-blue-950/20";
+    case "BUY IN KOREA":  return "bg-violet-50 dark:bg-violet-950/20";
+    case "ARRIVE KOR":    return "bg-cyan-50 dark:bg-cyan-950/20";
+    case "IN DELIVERY":   return "bg-amber-50 dark:bg-amber-950/20";
+    case "ARRIVE RUS":    return "bg-orange-50 dark:bg-orange-950/20";
+    case "RU DELIVERY":   return "bg-pink-50 dark:bg-pink-950/20";
+    case "DONE":          return "bg-green-50 dark:bg-green-950/20";
+    case "WAIT CUSTOMER": return "bg-yellow-50 dark:bg-yellow-950/20";
+    case "PROBLEM":       return "bg-red-50 dark:bg-red-950/20";
+    case "CANCEL":        return "bg-gray-50 dark:bg-gray-800/20";
+    default:              return "bg-white dark:bg-zinc-950";
+  }
+}
+
+const whiteBg = "bg-white dark:bg-zinc-950";
 
 const TOP_GROUP = ["PAY", "BUY IN KOREA", "ARRIVE KOR", "IN DELIVERY"];
 
@@ -808,14 +826,14 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               const itemPhotoSent = item.photo_sent ?? order.photo_sent;
 
               return (
-                <tr key={rowKey} className={orderBg}>
+                <tr key={rowKey}>
                   {/* # 줄 번호 */}
-                  <td className={`${tdBase} sticky left-0 z-20 w-[32px] text-xs text-zinc-400 dark:text-zinc-500 ${orderBg}`}>
+                  <td className={`${tdBase} sticky left-0 z-20 w-[32px] border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}>
                     {idx + 1}
                   </td>
 
                   {/* 날짜 */}
-                  <td className={`${tdBase} sticky left-[32px] z-20 w-[44px] whitespace-nowrap text-xs text-gray-500 ${orderBg}`}>
+                  <td className={`${tdBase} sticky left-[32px] z-20 w-[44px] whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${getProgressBgColor(itemProgress)}`}>
                     {order.date ? (() => {
                       const d = new Date(order.date);
                       return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
@@ -823,7 +841,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 주문번호 */}
-                  <td className={`${tdBase} sticky left-[76px] z-20 w-[90px] font-semibold ${orderBg}`}>
+                  <td className={`${tdBase} sticky left-[76px] z-20 w-[90px] border-r-gray-300 font-semibold ${orderBg}`}>
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
                       className="text-gray-900 hover:underline dark:text-gray-100"
@@ -834,7 +852,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 상품명 */}
                   <td
-                    className={`${tdBase} sticky left-[166px] z-20 text-left ${isEditingItem(id, "product_name") ? editingBg : ""} ${orderBg}`}
+                    className={`${tdBase} sticky left-[166px] z-20 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : getProgressBgColor(itemProgress)}`}
                     title={item.product_name}
                   >
                     {isEditingItem(id, "product_name") ? (
@@ -863,7 +881,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 옵션 */}
                   <td
-                    className={`${tdBase} text-left ${isEditingItem(id, "product_option") ? editingBg : ""} ${orderBg}`}
+                    className={`${tdBase} text-left ${isEditingItem(id, "product_option") ? editingBg : getProgressBgColor(itemProgress)}`}
                     title={item.product_option ?? ""}
                   >
                     {isEditingItem(id, "product_option") ? (
@@ -893,7 +911,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 진행 */}
-                  <td className={`${tdBase} p-1 ${isEditingItem(id, "progress") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} p-1 ${isEditingItem(id, "progress") ? editingBg : getProgressBgColor(itemProgress)}`}>
                     {isEditingItem(id, "progress") ? (
                       <select
                         ref={selectRef}
@@ -924,7 +942,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 단품/세트 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "product_set_type") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} ${isEditingItem(id, "product_set_type") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "product_set_type") ? (
                       <select
                         ref={selectRef}
@@ -959,7 +977,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 선물 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "gift") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} ${isEditingItem(id, "gift") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "gift") ? (
                       <select
                         ref={selectRef}
@@ -989,7 +1007,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 사진 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "photo_sent") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} ${isEditingItem(id, "photo_sent") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "photo_sent") ? (
                       <select
                         ref={selectRef}
@@ -1020,16 +1038,16 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 일자 */}
-                  <td className={`${tdBase} whitespace-nowrap ${orderBg}`}>{order.date?.slice(0, 10)}</td>
+                  <td className={`${tdBase} whitespace-nowrap ${whiteBg}`}>{order.date?.slice(0, 10)}</td>
 
                   {/* 플랫폼 */}
-                  <td className={`${tdBase} ${orderBg}`}>{order.platform}</td>
+                  <td className={`${tdBase} ${whiteBg}`}>{order.platform}</td>
 
                   {/* 경로 */}
-                  <td className={`${tdBase} ${orderBg}`}>{order.order_type}</td>
+                  <td className={`${tdBase} ${whiteBg}`}>{order.order_type}</td>
 
                   {/* 고객 */}
-                  <td className={`${tdBase} ${isEditingOrder(rowKey, "customer_name") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "customer_name") ? editingBg : whiteBg}`}>
                     {isEditingOrder(rowKey, "customer_name") ? (
                       <input
                         ref={inputRef}
@@ -1057,7 +1075,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 거래처 */}
-                  <td className={`${tdBase} ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : whiteBg}`}>
                     {isEditingOrder(rowKey, "purchase_channel") ? (
                       <input
                         ref={inputRef}
@@ -1088,7 +1106,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 카테고리 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "product_type") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} ${isEditingItem(id, "product_type") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "product_type") ? (
                       <select
                         ref={selectRef}
@@ -1124,7 +1142,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 수량 */}
-                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "quantity") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "quantity") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "quantity") ? (
                       <input
                         ref={inputRef}
@@ -1151,7 +1169,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 판매가₽ */}
-                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "price_rub") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "price_rub") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "price_rub") ? (
                       <input
                         ref={inputRef}
@@ -1178,7 +1196,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 원화매입 */}
-                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "krw") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "krw") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "krw") ? (
                       <input
                         ref={inputRef}
@@ -1205,7 +1223,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 선결제₽ */}
-                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "prepayment_rub") ? editingBg : ""} ${orderBg}`}>
+                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "prepayment_rub") ? editingBg : whiteBg}`}>
                     {isEditingItem(id, "prepayment_rub") ? (
                       <input
                         ref={inputRef}
@@ -1234,7 +1252,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 잔금₽ */}
-                  <td className={`${tdBase} border-r-0 tabular-nums text-zinc-700 dark:text-zinc-300 ${orderBg}`}>
+                  <td className={`${tdBase} border-r-0 tabular-nums text-zinc-700 dark:text-zinc-300 ${whiteBg}`}>
                     {fmtRub(computedExtra(item))}
                   </td>
                 </tr>
