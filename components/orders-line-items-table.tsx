@@ -259,6 +259,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const [undoingId, setUndoingId] = useState<string | null>(null);
 
   const tableRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
@@ -342,6 +343,17 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     const t = setTimeout(() => setToast(null), 4500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    const tableEl = tableRef.current;
+    const headerEl = headerRef.current;
+    if (!tableEl || !headerEl) return;
+    const onScroll = () => {
+      headerEl.scrollLeft = tableEl.scrollLeft;
+    };
+    tableEl.addEventListener("scroll", onScroll);
+    return () => tableEl.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     const el = tableRef.current;
@@ -1012,61 +1024,108 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       </p>
 
       <div className="w-full rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-      <div
-        ref={tableRef}
-        style={{ overflowX: "auto", overflowY: "visible" }}
-      >
-        <table className="min-w-full border-collapse text-left text-sm">
-          <colgroup>
-            <col style={{ width: "32px", minWidth: "32px" }} />
-            <col style={{ width: "46px", minWidth: "46px" }} />
-            <col style={{ width: "90px", minWidth: "90px" }} />
-            <col style={{ minWidth: "300px" }} />
-            <col style={{ minWidth: "180px" }} />
-            <col style={{ minWidth: "112px" }} />
-            <col style={{ minWidth: "72px" }} />
-            <col style={{ minWidth: "52px" }} />
-            <col style={{ minWidth: "88px" }} />
-            <col style={{ minWidth: "100px" }} />
-            <col style={{ minWidth: "72px" }} />
-            <col style={{ minWidth: "72px" }} />
-            <col style={{ minWidth: "100px" }} />
-            <col style={{ minWidth: "88px" }} />
-            <col style={{ minWidth: "88px" }} />
-            <col style={{ minWidth: "48px" }} />
-            <col style={{ minWidth: "88px" }} />
-            <col style={{ minWidth: "88px" }} />
-            <col style={{ minWidth: "80px" }} />
-            <col style={{ minWidth: "72px" }} />
-          </colgroup>
-          <thead>
-            <tr>
-              {/* sticky: # */}
-              <th className={`${thClass} sticky top-[108px] z-30`} style={{ left: 0, width: "32px", minWidth: "32px" }}>#</th>
-              {/* sticky: 날짜 */}
-              <th className={`${thClass} sticky top-[108px] z-30`} style={{ left: "32px", width: "46px", minWidth: "46px" }}>날짜</th>
-              {/* sticky: 주문번호 */}
-              <th className={`${thClass} sticky top-[108px] z-30`} style={{ left: "78px", width: "90px", minWidth: "90px" }}>주문번호</th>
-              {/* sticky: 상품명 */}
-              <th className={`${thClass} sticky top-[108px] z-30 text-left`} style={{ left: "168px", minWidth: "300px" }}>상품명</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[180px] text-left`}>옵션</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[112px]`}>진행</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[72px]`}>단품/세트</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[52px]`}>선물</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>사진</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[100px]`}>일자</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[72px]`}>플랫폼</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[72px]`}>경로</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[100px]`}>고객</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>거래처</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>카테고리</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[48px]`}>수량</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>판매가₽</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[88px]`}>원화매입</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[80px]`}>선결제₽</th>
-              <th className={`${thClass} sticky top-[108px] z-20 min-w-[72px] border-r-0`}>잔금₽</th>
-            </tr>
-          </thead>
+        <div
+          ref={headerRef}
+          className="sticky top-[108px] z-20 overflow-x-hidden bg-white dark:bg-zinc-950"
+          style={{ overflowX: "hidden" }}
+        >
+          <table className="min-w-full border-collapse text-left text-sm">
+            <colgroup>
+              <col style={{ width: "32px", minWidth: "32px" }} />
+              <col style={{ width: "46px", minWidth: "46px" }} />
+              <col style={{ width: "90px", minWidth: "90px" }} />
+              <col style={{ minWidth: "300px" }} />
+              <col style={{ minWidth: "180px" }} />
+              <col style={{ minWidth: "112px" }} />
+              <col style={{ minWidth: "72px" }} />
+              <col style={{ minWidth: "52px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "100px" }} />
+              <col style={{ minWidth: "72px" }} />
+              <col style={{ minWidth: "72px" }} />
+              <col style={{ minWidth: "100px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "48px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "80px" }} />
+              <col style={{ minWidth: "72px" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className={thClass} style={{ width: "32px", minWidth: "32px" }}>#</th>
+                <th className={thClass} style={{ width: "46px", minWidth: "46px" }}>날짜</th>
+                <th className={thClass} style={{ width: "90px", minWidth: "90px" }}>주문번호</th>
+                <th className={`${thClass} text-left`} style={{ minWidth: "300px" }}>상품명</th>
+                <th className={`${thClass} min-w-[180px] text-left`}>옵션</th>
+                <th className={`${thClass} min-w-[112px]`}>진행</th>
+                <th className={`${thClass} min-w-[72px]`}>단품/세트</th>
+                <th className={`${thClass} min-w-[52px]`}>선물</th>
+                <th className={`${thClass} min-w-[88px]`}>사진</th>
+                <th className={`${thClass} min-w-[100px]`}>일자</th>
+                <th className={`${thClass} min-w-[72px]`}>플랫폼</th>
+                <th className={`${thClass} min-w-[72px]`}>경로</th>
+                <th className={`${thClass} min-w-[100px]`}>고객</th>
+                <th className={`${thClass} min-w-[88px]`}>거래처</th>
+                <th className={`${thClass} min-w-[88px]`}>카테고리</th>
+                <th className={`${thClass} min-w-[48px]`}>수량</th>
+                <th className={`${thClass} min-w-[88px]`}>판매가₽</th>
+                <th className={`${thClass} min-w-[88px]`}>원화매입</th>
+                <th className={`${thClass} min-w-[80px]`}>선결제₽</th>
+                <th className={`${thClass} min-w-[72px] border-r-0`}>잔금₽</th>
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <div ref={tableRef} style={{ overflowX: "auto", overflowY: "visible" }}>
+          <table className="min-w-full border-collapse text-left text-sm">
+            <colgroup>
+              <col style={{ width: "32px", minWidth: "32px" }} />
+              <col style={{ width: "46px", minWidth: "46px" }} />
+              <col style={{ width: "90px", minWidth: "90px" }} />
+              <col style={{ minWidth: "300px" }} />
+              <col style={{ minWidth: "180px" }} />
+              <col style={{ minWidth: "112px" }} />
+              <col style={{ minWidth: "72px" }} />
+              <col style={{ minWidth: "52px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "100px" }} />
+              <col style={{ minWidth: "72px" }} />
+              <col style={{ minWidth: "72px" }} />
+              <col style={{ minWidth: "100px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "48px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "88px" }} />
+              <col style={{ minWidth: "80px" }} />
+              <col style={{ minWidth: "72px" }} />
+            </colgroup>
+            <thead className="sr-only">
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">날짜</th>
+                <th scope="col">주문번호</th>
+                <th scope="col">상품명</th>
+                <th scope="col">옵션</th>
+                <th scope="col">진행</th>
+                <th scope="col">단품/세트</th>
+                <th scope="col">선물</th>
+                <th scope="col">사진</th>
+                <th scope="col">일자</th>
+                <th scope="col">플랫폼</th>
+                <th scope="col">경로</th>
+                <th scope="col">고객</th>
+                <th scope="col">거래처</th>
+                <th scope="col">카테고리</th>
+                <th scope="col">수량</th>
+                <th scope="col">판매가₽</th>
+                <th scope="col">원화매입</th>
+                <th scope="col">선결제₽</th>
+                <th scope="col">잔금₽</th>
+              </tr>
+            </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
