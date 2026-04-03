@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES } from "@/lib/schema";
+import { ORDER_PROGRESS, ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES } from "@/lib/schema";
 import { inputClass, labelClass, selectClass } from "@/lib/form-classes";
 import React, { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
@@ -154,6 +154,7 @@ export function OrderCreateForm() {
   const [customerName, setCustomerName] = useState("");
   const [gift, setGift] = useState("no");
   const [date, setDate] = useState(today);
+  const [progress, setProgress] = useState("PAY");
   const [lines, setLines] = useState<LineRow[]>(() => [emptyLine()]);
 
   // UI state
@@ -197,6 +198,7 @@ export function OrderCreateForm() {
     setCustomerName("");
     setGift("no");
     setDate(moscowTodayYmd());
+    setProgress("PAY");
     setLines([emptyLine()]);
     setFormError(null);
     setFormSuccess(null);
@@ -243,6 +245,7 @@ export function OrderCreateForm() {
       setCustomerName(order.customer_name ?? "");
       setGift(order.gift ?? "no");
       setDate(order.date ?? moscowTodayYmd());
+      setProgress(order.progress ?? "PAY");
       setLines(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ((order.order_items ?? []) as any[]).map((item) => ({
@@ -292,7 +295,7 @@ export function OrderCreateForm() {
         platform,
         order_type: orderType,
         date,
-        progress: "PAY",
+        progress,
         customer_name: customerName.trim() || null,
         gift: gift === "ask" ? "ask" : "no",
         photo_sent: "Not sent",
@@ -338,7 +341,7 @@ export function OrderCreateForm() {
           date,
           customer_name: customerName.trim() || null,
           gift: gift === "ask" ? "ask" : "no",
-          progress: "PAY",
+          progress,
           platform: detectPlatform(editOrderNum),
         })
         .eq("order_num", editOrderNum);
@@ -576,8 +579,8 @@ export function OrderCreateForm() {
             </select>
           </label>
 
-          {/* 주문일 */}
-          <div className="flex flex-col gap-1 sm:col-span-2">
+          {/* 주문일 + 진행상태 — 2열 */}
+          <div className="flex flex-col gap-1">
             <label htmlFor="date" className={labelClass}>
               주문일 *
             </label>
@@ -592,6 +595,24 @@ export function OrderCreateForm() {
             />
             <span className="text-xs text-zinc-500">기본값: 모스크바 기준 오늘 날짜 (필요 시 변경 가능)</span>
           </div>
+
+          {/* 진행상태 */}
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>진행상태 *</span>
+            <select
+              name="progress"
+              required
+              className={selectClass}
+              value={progress}
+              onChange={(e) => setProgress(e.target.value)}
+            >
+              {ORDER_PROGRESS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {/* ── 상품 테이블 ── */}
