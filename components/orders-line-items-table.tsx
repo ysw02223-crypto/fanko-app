@@ -1011,7 +1011,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         주문 {orderCount}건 · 표시 행 {lineCount}줄 · 테이블을 드래그하면 좌우로 스크롤됩니다.
       </p>
 
-      <div className="w-full rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="w-full rounded-2xl bg-white shadow-sm outline outline-1 outline-zinc-200 dark:bg-zinc-950 dark:outline-zinc-800">
         <div ref={tableRef} style={{ overflowX: "auto", overflowY: "visible" }}>
           <table
             className="min-w-full border-collapse text-left text-sm"
