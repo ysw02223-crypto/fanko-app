@@ -483,8 +483,19 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     setToast(msg);
   }, []);
 
+  /** 저장 후 전체 목록 재조회 — UI 업데이트(bug1) + 자연스러운 재정렬(bug2) */
+  const fetchOrders = useCallback(async () => {
+    const supabase = createClient();
+    const { data, error } = await supabase.from("orders").select(ORDER_SELECT);
+    if (error || !data) {
+      showError("목록 새로고침 실패");
+      return;
+    }
+    setFlatRows(flattenOrders(data as OrderWithNestedItems[]));
+  }, [showError]);
+
   /**
-   * select 필드 즉시 저장 — savingRef 없이 직접 DB 업데이트 후 해당 order 전체 리프레시.
+   * select 필드 즉시 저장 — savingRef 없이 직접 DB 업데이트 후 전체 목록 재조회.
    * progress / gift / photo_sent / product_set_type / product_type 에 사용.
    */
   const quickSaveItem = useCallback(
@@ -499,20 +510,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         setEditing(null);
         return;
       }
-      const { data, error: fetchErr } = await supabase
-        .from("orders")
-        .select(ORDER_SELECT)
-        .eq("order_num", orderNum)
-        .single();
-      if (fetchErr || !data) {
-        showError(fetchErr?.message ?? "데이터 새로고침 실패");
-        setEditing(null);
-        return;
-      }
-      setFlatRows((prev) => replaceOrderSegment(prev, orderNum, data as OrderWithNestedItems));
+      await fetchOrders();
       setEditing(null);
     },
-    [showError],
+    [showError, fetchOrders],
   );
 
   const pushHistory = useCallback((entry: Omit<HistoryEntry, "id" | "at">) => {
@@ -670,16 +671,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           showError(error.message);
           return false;
         }
-        const { data, error: fetchErr } = await supabase
-          .from("orders")
-          .select(ORDER_SELECT)
-          .eq("order_num", orderNum)
-          .single();
-        if (fetchErr || !data) {
-          showError(fetchErr?.message ?? "주문을 다시 불러오지 못했습니다.");
-          return false;
-        }
-        setFlatRows((prev) => replaceOrderSegment(prev, orderNum, data as OrderWithNestedItems));
+        await fetchOrders();
         const revertPayload = buildOrderRevertPayload(field, oldRaw);
         pushHistory({
           orderNum,
@@ -695,7 +687,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         savingRef.current = false;
       }
     },
-    [buildOrderPayload, buildOrderRevertPayload, pushHistory, runOrderRevert, showError],
+    [buildOrderPayload, buildOrderRevertPayload, fetchOrders, pushHistory, runOrderRevert, showError],
   );
 
   const saveItemField = useCallback(
@@ -722,16 +714,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           showError(error.message);
           return false;
         }
-        const { data: orderFresh, error: orderErr } = await supabase
-          .from("orders")
-          .select(ORDER_SELECT)
-          .eq("order_num", orderNum)
-          .single();
-        if (orderErr || !orderFresh) {
-          showError(orderErr?.message ?? "주문을 다시 불러오지 못했습니다.");
-          return false;
-        }
-        setFlatRows((prev) => replaceOrderSegment(prev, orderNum, orderFresh as OrderWithNestedItems));
+        await fetchOrders();
         const revertUpdates = buildItemRevertUpdates(field, itemBefore);
         pushHistory({
           orderNum,
@@ -747,7 +730,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         savingRef.current = false;
       }
     },
-    [buildItemUpdates, pushHistory, runItemRevertThenRefresh, showError],
+    [buildItemUpdates, fetchOrders, pushHistory, runItemRevertThenRefresh, showError],
   );
 
   const startEdit = (target: EditTarget, current: string) => {
