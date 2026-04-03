@@ -1027,8 +1027,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       <div className="w-full rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <div
           ref={headerRef}
-          className="sticky top-[108px] z-20 bg-white dark:bg-zinc-950"
-          style={{ overflowX: "clip" }}
+          className="sticky top-[108px] z-20 overflow-x-clip bg-white dark:bg-zinc-950"
         >
           <div ref={headerScrollInnerRef}>
           <table
