@@ -1034,7 +1034,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
             {/* scrollLeft 동기화용(overflow:visible인 sticky에는 scrollLeft가 먹지 않음) */}
             <div
               ref={headerScrollRef}
-              className="w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              className="w-full min-w-0 max-w-full"
+              style={{ overflow: "visible" }}
             >
               <table
                 className="min-w-full border-collapse text-left text-sm"
