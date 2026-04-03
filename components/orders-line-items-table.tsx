@@ -139,7 +139,7 @@ function displayItemField(field: ItemEditableField, raw: string): string {
 
 const thClass =
   "whitespace-nowrap border-b-2 border-r border-zinc-300 bg-zinc-50 px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
-const tdBase = "border-b border-r border-zinc-200 px-2 py-0.5 align-middle text-center text-sm dark:border-zinc-700";
+const tdBase = "border-b border-r border-zinc-200 px-2 py-px align-middle text-center text-sm dark:border-zinc-700";
 const cellBtn =
   "w-full cursor-pointer rounded px-1 py-0.5 text-center transition hover:bg-black/5 dark:hover:bg-white/10";
 const cellBtnLeft =
@@ -181,21 +181,46 @@ function buildItemRevertUpdates(field: ItemEditableField, before: OrderItemRow):
 }
 
 const ORDER_BG_COLORS = [
-  "bg-emerald-50 dark:bg-emerald-950/30",
-  "bg-blue-50 dark:bg-blue-950/30",
-  "bg-violet-50 dark:bg-violet-950/30",
-  "bg-rose-50 dark:bg-rose-950/30",
-  "bg-amber-50 dark:bg-amber-950/30",
-  "bg-cyan-50 dark:bg-cyan-950/30",
-  "bg-pink-50 dark:bg-pink-950/30",
-  "bg-indigo-50 dark:bg-indigo-950/30",
-  "bg-teal-50 dark:bg-teal-950/30",
-  "bg-orange-50 dark:bg-orange-950/30",
+  "bg-slate-200 dark:bg-slate-700",
+  "bg-blue-200 dark:bg-blue-800",
+  "bg-violet-200 dark:bg-violet-800",
+  "bg-pink-200 dark:bg-pink-800",
+  "bg-amber-200 dark:bg-amber-800",
+  "bg-teal-200 dark:bg-teal-800",
+  "bg-rose-200 dark:bg-rose-800",
+  "bg-indigo-200 dark:bg-indigo-800",
+  "bg-cyan-200 dark:bg-cyan-800",
+  "bg-orange-200 dark:bg-orange-800",
+  "bg-lime-200 dark:bg-lime-800",
+  "bg-fuchsia-200 dark:bg-fuchsia-800",
 ];
 
 function getOrderBgColor(orderNum: string): string {
   const hash = orderNum.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return ORDER_BG_COLORS[hash % ORDER_BG_COLORS.length];
+}
+
+function dateBgClass(extraPayment: number): string {
+  return extraPayment > 0
+    ? "bg-red-100 dark:bg-red-950/30"
+    : "bg-white dark:bg-zinc-950";
+}
+
+function getSetTypeBg(setType: string): string {
+  return setType === "SET" ? "bg-red-100 dark:bg-red-950/30" : "bg-white dark:bg-zinc-950";
+}
+
+function getGiftBg(gift: string): string {
+  return gift === "ask" ? "bg-red-100 dark:bg-red-950/30" : "bg-white dark:bg-zinc-950";
+}
+
+function getPhotoSentBg(photoSent: string): string {
+  switch (photoSent) {
+    case "Not sent": return "bg-green-600 text-white dark:bg-green-700";
+    case "Sent 1":   return "bg-green-200 dark:bg-green-800";
+    case "Sent 2":   return "bg-white dark:bg-zinc-950";
+    default:         return "bg-white dark:bg-zinc-950";
+  }
 }
 
 function getProgressBgColor(progress: string): string {
@@ -833,7 +858,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 날짜 */}
-                  <td className={`${tdBase} sticky left-[32px] z-20 w-[44px] whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${getProgressBgColor(itemProgress)}`}>
+                  <td className={`${tdBase} sticky left-[32px] z-20 w-[44px] whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${dateBgClass(computedExtra(item))}`}>
                     {order.date ? (() => {
                       const d = new Date(order.date);
                       return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
@@ -942,7 +967,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 단품/세트 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "product_set_type") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} ${isEditingItem(id, "product_set_type") ? editingBg : getSetTypeBg(item.product_set_type)}`}>
                     {isEditingItem(id, "product_set_type") ? (
                       <select
                         ref={selectRef}
@@ -977,7 +1002,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 선물 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "gift") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} ${isEditingItem(id, "gift") ? editingBg : getGiftBg(itemGift)}`}>
                     {isEditingItem(id, "gift") ? (
                       <select
                         ref={selectRef}
@@ -1007,7 +1032,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 사진 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "photo_sent") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} ${isEditingItem(id, "photo_sent") ? editingBg : getPhotoSentBg(itemPhotoSent)}`}>
                     {isEditingItem(id, "photo_sent") ? (
                       <select
                         ref={selectRef}
