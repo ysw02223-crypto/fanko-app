@@ -1,9 +1,26 @@
-import { OrdersSpreadsheetTable, type OrderListRow } from "@/components/orders-spreadsheet-table";
+import { OrdersLineItemsTable } from "@/components/orders-line-items-table";
 import { createClient } from "@/lib/supabase/server";
+import type { OrderWithNestedItems } from "@/lib/orders-line-items-flatten";
 import { ORDER_PROGRESS, PLATFORMS } from "@/lib/schema";
 import Link from "next/link";
 
 type SearchParams = { platform?: string; progress?: string };
+
+const ORDER_LIST_SELECT = `
+  *,
+  order_items (
+    id,
+    product_type,
+    product_name,
+    product_option,
+    product_set_type,
+    quantity,
+    price_rub,
+    prepayment_rub,
+    extra_payment_rub,
+    krw
+  )
+`;
 
 export default async function OrdersPage({
   searchParams,
@@ -25,16 +42,7 @@ export default async function OrdersPage({
 
   let query = supabase
     .from("orders")
-    .select(
-      `
-      *,
-      order_items (
-        product_name,
-        price_rub,
-        krw
-      )
-    `,
-    )
+    .select(ORDER_LIST_SELECT)
     .order("date", { ascending: false })
     .order("order_num", { ascending: false });
 
@@ -51,7 +59,11 @@ export default async function OrdersPage({
     );
   }
 
-  const orders = (rows ?? []) as OrderListRow[];
+  const orders = (rows ?? []) as OrderWithNestedItems[];
+  const lineCount = orders.reduce(
+    (acc, o) => acc + Math.max(1, (o.order_items ?? []).length),
+    0,
+  );
   const base = "/orders";
 
   return (
@@ -60,7 +72,8 @@ export default async function OrdersPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">주문 목록</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            총 {orders.length}건 · 셀 클릭으로 진행·고객·선물·사진·거래처를 바로 수정할 수 있습니다.
+            {lineCount}행 표시 · 주문 {orders.length}건 · 같은 주문번호는 배경으로 묶여 있으며, 품목마다 행이
+            나뉩니다. 셀 클릭으로 수정 후 Enter 또는 포커스 해제 시 저장됩니다.
           </p>
         </div>
         <Link
@@ -108,7 +121,7 @@ export default async function OrdersPage({
         </div>
       </div>
 
-      <OrdersSpreadsheetTable initialRows={orders} />
+      <OrdersLineItemsTable initialOrders={orders} />
     </div>
   );
 }
