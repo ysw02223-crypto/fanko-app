@@ -35,7 +35,7 @@ type LineRow = {
 function emptyLine(): LineRow {
   return {
     id: crypto.randomUUID(),
-    product_type: "",
+    product_type: "Cosmetic",
     product_name: "",
     product_option: "",
     product_set_type: "Single",
@@ -43,6 +43,11 @@ function emptyLine(): LineRow {
     price_rub: "",
     prepayment_rub: "0",
   };
+}
+
+function extractOption(productName: string): string | null {
+  const match = productName.match(/\(([^)]+)\)(?=[^(]*$)/);
+  return match ? match[0] : null;
 }
 
 function lineExtraRub(line: LineRow): string {
@@ -87,6 +92,16 @@ export function OrderCreateForm() {
   };
   const updateLine = (id: string, patch: Partial<LineRow>) => {
     setLines((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const handleProductNameChange = (id: string, value: string) => {
+    setLines((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const option = r.product_option === "" ? (extractOption(value) ?? r.product_option) : r.product_option;
+        return { ...r, product_name: value, product_option: option };
+      }),
+    );
   };
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -288,7 +303,7 @@ export function OrderCreateForm() {
                     <input
                       className={`${cellInput} w-full`}
                       value={line.product_name}
-                      onChange={(e) => updateLine(line.id, { product_name: e.target.value })}
+                      onChange={(e) => handleProductNameChange(line.id, e.target.value)}
                       placeholder="필수"
                     />
                   </td>
