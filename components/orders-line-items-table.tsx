@@ -433,14 +433,21 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const runOrderRevert = useCallback(
     async (orderNum: string, payload: Record<string, unknown>) => {
       const supabase = createClient();
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("orders")
         .update(payload)
-        .eq("order_num", orderNum)
-        .select(ORDER_SELECT)
-        .single();
+        .eq("order_num", orderNum);
       if (error) {
         showError(error.message);
+        return;
+      }
+      const { data, error: fetchErr } = await supabase
+        .from("orders")
+        .select(ORDER_SELECT)
+        .eq("order_num", orderNum)
+        .single();
+      if (fetchErr || !data) {
+        showError(fetchErr?.message ?? "주문을 다시 불러오지 못했습니다.");
         return;
       }
       setFlatRows((prev) => replaceOrderSegment(prev, orderNum, data as OrderWithNestedItems));
@@ -567,14 +574,21 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       savingRef.current = true;
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from("orders")
           .update(built.payload)
-          .eq("order_num", orderNum)
-          .select(ORDER_SELECT)
-          .single();
+          .eq("order_num", orderNum);
         if (error) {
           showError(error.message);
+          return false;
+        }
+        const { data, error: fetchErr } = await supabase
+          .from("orders")
+          .select(ORDER_SELECT)
+          .eq("order_num", orderNum)
+          .single();
+        if (fetchErr || !data) {
+          showError(fetchErr?.message ?? "주문을 다시 불러오지 못했습니다.");
           return false;
         }
         setFlatRows((prev) => replaceOrderSegment(prev, orderNum, data as OrderWithNestedItems));
