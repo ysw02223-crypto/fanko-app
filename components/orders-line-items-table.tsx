@@ -874,6 +874,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       </button>
 
       {/* 필터 바 */}
+      <div className="sticky top-[57px] z-10 -mx-4 border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex flex-wrap items-center gap-2">
         <FilterDropdown
           label="진행"
@@ -937,6 +938,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           onChange={(e) => setSearchQuery(e.target.value)}
         />
       </div>
+      </div>
 
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         주문 {orderCount}건 · 표시 행 {lineCount}줄 · 테이블을 드래그하면 좌우로 스크롤됩니다.
@@ -972,29 +974,29 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           <thead>
             <tr>
               {/* sticky: # */}
-              <th className={`${thClass} sticky top-0 z-30`} style={{ left: 0, width: "32px", minWidth: "32px" }}>#</th>
+              <th className={`${thClass} sticky top-[105px] z-30`} style={{ left: 0, width: "32px", minWidth: "32px" }}>#</th>
               {/* sticky: 날짜 */}
-              <th className={`${thClass} sticky top-0 z-30`} style={{ left: "32px", width: "46px", minWidth: "46px" }}>날짜</th>
+              <th className={`${thClass} sticky top-[105px] z-30`} style={{ left: "32px", width: "46px", minWidth: "46px" }}>날짜</th>
               {/* sticky: 주문번호 */}
-              <th className={`${thClass} sticky top-0 z-30`} style={{ left: "78px", width: "90px", minWidth: "90px" }}>주문번호</th>
+              <th className={`${thClass} sticky top-[105px] z-30`} style={{ left: "78px", width: "90px", minWidth: "90px" }}>주문번호</th>
               {/* sticky: 상품명 */}
-              <th className={`${thClass} sticky top-0 z-30 text-left`} style={{ left: "168px", minWidth: "300px" }}>상품명</th>
-              <th className={`${thClass} min-w-[180px] text-left`}>옵션</th>
-              <th className={`${thClass} min-w-[112px]`}>진행</th>
-              <th className={`${thClass} min-w-[72px]`}>단품/세트</th>
-              <th className={`${thClass} min-w-[52px]`}>선물</th>
-              <th className={`${thClass} min-w-[88px]`}>사진</th>
-              <th className={`${thClass} min-w-[100px]`}>일자</th>
-              <th className={`${thClass} min-w-[72px]`}>플랫폼</th>
-              <th className={`${thClass} min-w-[72px]`}>경로</th>
-              <th className={`${thClass} min-w-[100px]`}>고객</th>
-              <th className={`${thClass} min-w-[88px]`}>거래처</th>
-              <th className={`${thClass} min-w-[88px]`}>카테고리</th>
-              <th className={`${thClass} min-w-[48px]`}>수량</th>
-              <th className={`${thClass} min-w-[88px]`}>판매가₽</th>
-              <th className={`${thClass} min-w-[88px]`}>원화매입</th>
-              <th className={`${thClass} min-w-[80px]`}>선결제₽</th>
-              <th className={`${thClass} min-w-[72px] border-r-0`}>잔금₽</th>
+              <th className={`${thClass} sticky top-[105px] z-30 text-left`} style={{ left: "168px", minWidth: "300px" }}>상품명</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[180px] text-left`}>옵션</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[112px]`}>진행</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[72px]`}>단품/세트</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[52px]`}>선물</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>사진</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[100px]`}>일자</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[72px]`}>플랫폼</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[72px]`}>경로</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[100px]`}>고객</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>거래처</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>카테고리</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[48px]`}>수량</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>판매가₽</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>원화매입</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[80px]`}>선결제₽</th>
+              <th className={`${thClass} sticky top-[105px] min-w-[72px] border-r-0`}>잔금₽</th>
             </tr>
           </thead>
           <tbody>
