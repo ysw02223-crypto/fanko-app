@@ -168,6 +168,7 @@ export function OrderCreateForm() {
   // recent orders panel
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const fetchRecentOrders = useCallback(async () => {
     setRecentLoading(true);
@@ -176,7 +177,7 @@ export function OrderCreateForm() {
         .from("orders")
         .select("order_num, date, customer_name, progress, order_items(product_name, product_option, price_rub)")
         .order("created_at", { ascending: false })
-        .limit(10);
+        .limit(20);
       setRecentOrders((data as RecentOrder[]) ?? []);
     } finally {
       setRecentLoading(false);
@@ -379,8 +380,114 @@ export function OrderCreateForm() {
   // ── render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-[3fr_2fr]">
-      {/* ── 왼쪽: 주문 입력 폼 ── */}
+    <>
+      {/* ── 추가 이력 슬라이드 패널 ── */}
+      {historyOpen && (
+        <div className="fixed inset-0 z-[105] flex justify-end bg-black/30" role="presentation">
+          <button
+            type="button"
+            className="h-full flex-1 cursor-default"
+            aria-label="닫기"
+            onClick={() => setHistoryOpen(false)}
+          />
+          <div className="flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">추가 이력</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void fetchRecentOrders()}
+                  disabled={recentLoading}
+                  className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800"
+                >
+                  {recentLoading ? "로딩…" : "새로고침"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  onClick={() => setHistoryOpen(false)}
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {recentLoading && recentOrders.length === 0 ? (
+                <p className="p-6 text-center text-sm text-zinc-400">불러오는 중…</p>
+              ) : recentOrders.length === 0 ? (
+                <p className="p-6 text-center text-sm text-zinc-400">최근 주문이 없습니다.</p>
+              ) : (
+                <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  {recentOrders.map((order) => {
+                    const products = order.order_items
+                      .map((it) => (it.product_option ? stripLastParens(it.product_name) : it.product_name))
+                      .join(", ");
+                    const totalRub = order.order_items.reduce((acc, it) => acc + (it.price_rub ?? 0), 0);
+                    const isEditing = editMode && editOrderNum === order.order_num;
+
+                    return (
+                      <li
+                        key={order.order_num}
+                        className={`flex flex-col gap-1 px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60 ${isEditing ? "bg-sky-50 dark:bg-sky-950/30" : ""}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void loadOrder(order.order_num);
+                              setHistoryOpen(false);
+                            }}
+                            className="font-mono text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+                          >
+                            {order.order_num}
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${progressBadgeClass(order.progress)}`}
+                            >
+                              {order.progress}
+                            </span>
+                            <span className="text-xs text-zinc-400">불러오기 →</span>
+                          </div>
+                        </div>
+                        <div className="flex items-baseline gap-2 text-xs text-zinc-500">
+                          <span>{order.date?.slice(0, 10) ?? "—"}</span>
+                          {order.customer_name && (
+                            <>
+                              <span>·</span>
+                              <span className="font-medium text-zinc-700 dark:text-zinc-300">{order.customer_name}</span>
+                            </>
+                          )}
+                          <span>·</span>
+                          <span className="tabular-nums text-zinc-600 dark:text-zinc-300">
+                            {totalRub > 0 ? `${totalRub.toLocaleString("ko-KR")} ₽` : "—"}
+                          </span>
+                        </div>
+                        {products && (
+                          <p className="truncate text-xs text-zinc-400 dark:text-zinc-500" title={products}>
+                            {products}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 추가 이력 고정 버튼 ── */}
+      <button
+        type="button"
+        className="fixed bottom-6 right-6 z-50 rounded-full bg-gray-800 px-4 py-2 text-xs font-semibold text-white shadow-lg hover:bg-gray-700 dark:bg-zinc-700 dark:hover:bg-zinc-600"
+        onClick={() => setHistoryOpen(true)}
+      >
+        추가 이력 {recentOrders.length > 0 ? `(${recentOrders.length})` : ""}
+      </button>
+
+      {/* ── 주문 입력 폼 ── */}
       <form
         onSubmit={editMode ? handleUpdate : handleSubmit}
         className="flex flex-col gap-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
@@ -640,85 +747,6 @@ export function OrderCreateForm() {
           {pending ? "저장 중…" : editMode ? "수정 저장" : "주문 저장"}
         </button>
       </form>
-
-      {/* ── 오른쪽: 최근 추가한 주문 패널 ── */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">최근 추가한 주문</h2>
-          <button
-            type="button"
-            onClick={() => void fetchRecentOrders()}
-            disabled={recentLoading}
-            className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800"
-          >
-            {recentLoading ? "로딩…" : "새로고침"}
-          </button>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          {recentLoading && recentOrders.length === 0 ? (
-            <p className="p-6 text-center text-sm text-zinc-400">불러오는 중…</p>
-          ) : recentOrders.length === 0 ? (
-            <p className="p-6 text-center text-sm text-zinc-400">최근 주문이 없습니다.</p>
-          ) : (
-            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {recentOrders.map((order) => {
-                const products = order.order_items
-                  .map((it) => (it.product_option ? stripLastParens(it.product_name) : it.product_name))
-                  .join(", ");
-                const totalRub = order.order_items.reduce((acc, it) => acc + (it.price_rub ?? 0), 0);
-                const isEditing = editMode && editOrderNum === order.order_num;
-
-                return (
-                  <li
-                    key={order.order_num}
-                    className={`flex flex-col gap-1 px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60 ${isEditing ? "bg-sky-50 dark:bg-sky-950/30" : ""}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void loadOrder(order.order_num)}
-                        className="font-mono text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
-                      >
-                        {order.order_num}
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${progressBadgeClass(order.progress)}`}
-                        >
-                          {order.progress}
-                        </span>
-                        <span className="text-xs text-zinc-400">불러오기 →</span>
-                      </div>
-                    </div>
-                    <div className="flex items-baseline gap-2 text-xs text-zinc-500">
-                      <span>{order.date?.slice(0, 10) ?? "—"}</span>
-                      {order.customer_name && (
-                        <>
-                          <span>·</span>
-                          <span className="font-medium text-zinc-700 dark:text-zinc-300">{order.customer_name}</span>
-                        </>
-                      )}
-                      <span>·</span>
-                      <span className="tabular-nums text-zinc-600 dark:text-zinc-300">
-                        {totalRub > 0 ? `${totalRub.toLocaleString("ko-KR")} ₽` : "—"}
-                      </span>
-                    </div>
-                    {products && (
-                      <p
-                        className="truncate text-xs text-zinc-400 dark:text-zinc-500"
-                        title={products}
-                      >
-                        {products}
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

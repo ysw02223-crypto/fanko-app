@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export default function NewOrderPage() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <div>
         <Link
           href="/orders"
