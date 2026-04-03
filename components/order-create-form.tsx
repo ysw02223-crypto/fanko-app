@@ -1,16 +1,15 @@
 "use client";
 
-import { createOrderWithItemsAction, type NewOrderLinePayload } from "@/lib/actions/orders";
+import { createClient } from "@/lib/supabase/client";
 import { ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES } from "@/lib/schema";
 import { inputClass, labelClass, selectClass } from "@/lib/form-classes";
-import React, { useMemo, useState, useTransition, type FormEvent } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+
+// ── helpers ────────────────────────────────────────────────────────────────────
 
 function moscowTodayYmd(): string {
-  const moscowDate = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Moscow" }));
-  const yyyy = moscowDate.getFullYear();
-  const mm = String(moscowDate.getMonth() + 1).padStart(2, "0");
-  const dd = String(moscowDate.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Moscow" }));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function detectPlatform(orderNum: string): string {
@@ -20,6 +19,29 @@ function detectPlatform(orderNum: string): string {
   if (prefix === "03") return "vk";
   return "avito";
 }
+
+function extractOption(productName: string): string | null {
+  const match = productName.match(/\(([^)]+)\)(?=[^(]*$)/);
+  return match ? match[0] : null;
+}
+
+function stripLastParens(name: string): string {
+  return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+function progressBadgeClass(p: string): string {
+  const map: Record<string, string> = {
+    PAY: "bg-slate-200 text-slate-900",
+    "BUY IN KOREA": "bg-amber-200 text-amber-950",
+    "ARRIVE KOR": "bg-orange-200 text-orange-950",
+    "IN DELIVERY": "bg-sky-200 text-sky-950",
+    "ARRIVE RUS": "bg-cyan-200 text-cyan-950",
+    DONE: "bg-emerald-200 text-emerald-950",
+  };
+  return map[p] ?? "bg-zinc-200 text-zinc-800";
+}
+
+// ── types ──────────────────────────────────────────────────────────────────────
 
 type LineRow = {
   id: string;
@@ -31,6 +53,20 @@ type LineRow = {
   price_rub: string;
   prepayment_rub: string;
 };
+
+type RecentOrder = {
+  order_num: string;
+  date: string | null;
+  customer_name: string | null;
+  progress: string;
+  order_items: Array<{
+    product_name: string;
+    product_option: string | null;
+    price_rub: number;
+  }>;
+};
+
+// ── line helpers ───────────────────────────────────────────────────────────────
 
 function emptyLine(): LineRow {
   return {
@@ -45,11 +81,6 @@ function emptyLine(): LineRow {
   };
 }
 
-function extractOption(productName: string): string | null {
-  const match = productName.match(/\(([^)]+)\)(?=[^(]*$)/);
-  return match ? match[0] : null;
-}
-
 function lineExtraRub(line: LineRow): string {
   const p = Number(line.price_rub);
   const pre = Number(line.prepayment_rub);
@@ -57,7 +88,44 @@ function lineExtraRub(line: LineRow): string {
   return (p - pre).toLocaleString("ko-KR", { maximumFractionDigits: 2 });
 }
 
-// 고정 컬럼 너비 (px) — 상품명은 남은 공간 전부
+function validateLines(lines: LineRow[]): string | null {
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i];
+    if (!L.product_name.trim()) return `상품 ${i + 1}행: 상품명을 입력하세요.`;
+    const priceRaw = L.price_rub.trim();
+    if (!priceRaw) return `상품 ${i + 1}행: 판매가(₽)를 입력하세요.`;
+    const price_rub = Number(priceRaw);
+    if (!Number.isFinite(price_rub)) return `상품 ${i + 1}행: 판매가(₽)를 입력하세요.`;
+    const q = Math.floor(Number(L.quantity));
+    if (!Number.isFinite(q) || q < 1) return `상품 ${i + 1}행: 수량을 확인하세요.`;
+    const prepayment_rub = L.prepayment_rub.trim() === "" ? 0 : Number(L.prepayment_rub);
+    if (!Number.isFinite(prepayment_rub) || prepayment_rub < 0)
+      return `상품 ${i + 1}행: 선결제(₽)를 확인하세요.`;
+  }
+  return null;
+}
+
+function linesToInsertRows(lines: LineRow[], orderNum: string) {
+  return lines.map((L) => {
+    const price_rub = Number(L.price_rub);
+    const prepayment_rub = L.prepayment_rub.trim() === "" ? 0 : Number(L.prepayment_rub);
+    return {
+      order_num: orderNum,
+      product_type: L.product_type || null,
+      product_name: L.product_name.trim(),
+      product_option: L.product_option.trim() || null,
+      product_set_type: L.product_set_type,
+      quantity: Math.floor(Number(L.quantity)),
+      price_rub,
+      prepayment_rub,
+      extra_payment_rub: price_rub - prepayment_rub,
+      krw: null,
+    };
+  });
+}
+
+// ── column widths ──────────────────────────────────────────────────────────────
+
 const COL_W = {
   category: 110,
   option: 120,
@@ -73,13 +141,67 @@ function wPx(n: number): React.CSSProperties {
   return { width: n };
 }
 
+// ── component ──────────────────────────────────────────────────────────────────
+
 export function OrderCreateForm() {
   const today = useMemo(() => moscowTodayYmd(), []);
+  const supabase = useMemo(() => createClient(), []);
+
+  // form fields (all controlled)
   const [orderNum, setOrderNum] = useState("");
   const [platform, setPlatform] = useState("avito");
+  const [orderType, setOrderType] = useState("KOREA");
+  const [customerName, setCustomerName] = useState("");
+  const [gift, setGift] = useState("no");
+  const [date, setDate] = useState(today);
   const [lines, setLines] = useState<LineRow[]>(() => [emptyLine()]);
+
+  // UI state
   const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // edit mode
+  const [editMode, setEditMode] = useState(false);
+  const [editOrderNum, setEditOrderNum] = useState("");
+
+  // recent orders panel
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+
+  const fetchRecentOrders = useCallback(async () => {
+    setRecentLoading(true);
+    try {
+      const { data } = await supabase
+        .from("orders")
+        .select("order_num, date, customer_name, progress, order_items(product_name, product_option, price_rub)")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      setRecentOrders((data as RecentOrder[]) ?? []);
+    } finally {
+      setRecentLoading(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    void fetchRecentOrders();
+  }, [fetchRecentOrders]);
+
+  // ── form helpers ─────────────────────────────────────────────────────────────
+
+  const resetForm = useCallback(() => {
+    setOrderNum("");
+    setPlatform("avito");
+    setOrderType("KOREA");
+    setCustomerName("");
+    setGift("no");
+    setDate(moscowTodayYmd());
+    setLines([emptyLine()]);
+    setFormError(null);
+    setFormSuccess(null);
+    setEditMode(false);
+    setEditOrderNum("");
+  }, []);
 
   const handleOrderNumChange = (v: string) => {
     setOrderNum(v);
@@ -87,97 +209,166 @@ export function OrderCreateForm() {
   };
 
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
-  const removeLine = (id: string) => {
+  const removeLine = (id: string) =>
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.id !== id)));
-  };
-  const updateLine = (id: string, patch: Partial<LineRow>) => {
+  const updateLine = (id: string, patch: Partial<LineRow>) =>
     setLines((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  };
 
   const handleProductNameChange = (id: string, value: string) => {
     setLines((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
-        const option = r.product_option === "" ? (extractOption(value) ?? r.product_option) : r.product_option;
+        const option = r.product_option === "" ? (extractOption(value) ?? "") : r.product_option;
         return { ...r, product_name: value, product_option: option };
       }),
     );
   };
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  // ── load existing order into form ────────────────────────────────────────────
+
+  const loadOrder = useCallback(
+    async (on: string) => {
+      const { data: order, error } = await supabase
+        .from("orders")
+        .select("*, order_items(*)")
+        .eq("order_num", on)
+        .single();
+
+      if (error || !order) return;
+
+      setOrderNum(order.order_num);
+      setPlatform(order.platform ?? "avito");
+      setOrderType(order.order_type ?? "KOREA");
+      setCustomerName(order.customer_name ?? "");
+      setGift(order.gift ?? "no");
+      setDate(order.date ?? moscowTodayYmd());
+      setLines(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((order.order_items ?? []) as any[]).map((item) => ({
+          id: crypto.randomUUID(),
+          product_type: item.product_type ?? "Cosmetic",
+          product_name: item.product_name ?? "",
+          product_option: item.product_option ?? "",
+          product_set_type: item.product_set_type ?? "Single",
+          quantity: String(item.quantity ?? 1),
+          price_rub: String(item.price_rub ?? ""),
+          prepayment_rub: String(item.prepayment_rub ?? 0),
+        })),
+      );
+      setEditMode(true);
+      setEditOrderNum(on);
+      setFormError(null);
+      setFormSuccess(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [supabase],
+  );
+
+  // ── submit: INSERT new order ─────────────────────────────────────────────────
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    const fd = new FormData(e.currentTarget);
-    const order_num = String(fd.get("order_num") ?? "").trim();
-    const order_type = String(fd.get("order_type") ?? "");
-    const date = String(fd.get("date") ?? "").trim();
-    const customer_name = String(fd.get("customer_name") ?? "").trim();
-    const gift = String(fd.get("gift") ?? "no");
+    setFormSuccess(null);
 
-    if (!order_num) {
+    if (!orderNum.trim()) {
       setFormError("주문번호를 입력하세요.");
       return;
     }
-
-    const payloadLines: NewOrderLinePayload[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const L = lines[i];
-      if (!L.product_name.trim()) {
-        setFormError(`상품 ${i + 1}행: 상품명을 입력하세요.`);
-        return;
-      }
-      const priceRaw = L.price_rub.trim();
-      if (!priceRaw) {
-        setFormError(`상품 ${i + 1}행: 판매가(₽)를 입력하세요.`);
-        return;
-      }
-      const price_rub = Number(priceRaw);
-      if (!Number.isFinite(price_rub)) {
-        setFormError(`상품 ${i + 1}행: 판매가(₽)를 입력하세요.`);
-        return;
-      }
-      const q = Math.floor(Number(L.quantity));
-      if (!Number.isFinite(q) || q < 1) {
-        setFormError(`상품 ${i + 1}행: 수량을 확인하세요.`);
-        return;
-      }
-      const prepRaw = L.prepayment_rub.trim();
-      const prepayment_rub = prepRaw === "" ? 0 : Number(prepRaw);
-      if (!Number.isFinite(prepayment_rub) || prepayment_rub < 0) {
-        setFormError(`상품 ${i + 1}행: 선결제(₽)를 확인하세요.`);
-        return;
-      }
-
-      payloadLines.push({
-        product_type: L.product_type,
-        product_name: L.product_name.trim(),
-        product_option: L.product_option,
-        product_set_type: L.product_set_type,
-        quantity: q,
-        price_rub,
-        prepayment_rub,
-      });
-    }
-
-    if (payloadLines.length < 1) {
+    if (lines.length < 1) {
       setFormError("상품을 최소 1개 이상 추가하세요.");
+      return;
+    }
+    const lineErr = validateLines(lines);
+    if (lineErr) {
+      setFormError(lineErr);
       return;
     }
 
     startTransition(async () => {
-      const res = await createOrderWithItemsAction({
-        order_num,
+      const { error: orderErr } = await supabase.from("orders").insert({
+        order_num: orderNum.trim(),
         platform,
-        order_type,
+        order_type: orderType,
         date,
-        customer_name,
-        gift,
-        lines: payloadLines,
+        progress: "PAY",
+        customer_name: customerName.trim() || null,
+        gift: gift === "ask" ? "ask" : "no",
+        photo_sent: "Not sent",
+        purchase_channel: null,
       });
-      if (res?.error) setFormError(res.error);
+      if (orderErr) {
+        setFormError(orderErr.message);
+        return;
+      }
+
+      const rows = linesToInsertRows(lines, orderNum.trim());
+      const { error: itemsErr } = await supabase.from("order_items").insert(rows);
+      if (itemsErr) {
+        await supabase.from("orders").delete().eq("order_num", orderNum.trim());
+        setFormError(itemsErr.message);
+        return;
+      }
+
+      setFormSuccess(`주문 ${orderNum.trim()} 저장 완료!`);
+      resetForm();
+      void fetchRecentOrders();
     });
   };
+
+  // ── submit: UPDATE existing order ────────────────────────────────────────────
+
+  const handleUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    setFormSuccess(null);
+
+    const lineErr = validateLines(lines);
+    if (lineErr) {
+      setFormError(lineErr);
+      return;
+    }
+
+    startTransition(async () => {
+      const { error: orderErr } = await supabase
+        .from("orders")
+        .update({
+          order_type: orderType,
+          date,
+          customer_name: customerName.trim() || null,
+          gift: gift === "ask" ? "ask" : "no",
+          progress: "PAY",
+          platform: detectPlatform(editOrderNum),
+        })
+        .eq("order_num", editOrderNum);
+      if (orderErr) {
+        setFormError(orderErr.message);
+        return;
+      }
+
+      const { error: delErr } = await supabase
+        .from("order_items")
+        .delete()
+        .eq("order_num", editOrderNum);
+      if (delErr) {
+        setFormError(delErr.message);
+        return;
+      }
+
+      const rows = linesToInsertRows(lines, editOrderNum);
+      const { error: itemsErr } = await supabase.from("order_items").insert(rows);
+      if (itemsErr) {
+        setFormError(itemsErr.message);
+        return;
+      }
+
+      setFormSuccess(`주문 ${editOrderNum} 수정 완료!`);
+      resetForm();
+      void fetchRecentOrders();
+    });
+  };
+
+  // ── styles ───────────────────────────────────────────────────────────────────
 
   const th =
     "whitespace-nowrap border-b border-zinc-200 bg-zinc-50 px-2 py-2 text-left text-xs font-semibold text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400";
@@ -185,221 +376,349 @@ export function OrderCreateForm() {
   const cellInput = `${inputClass} !py-1.5 text-sm`;
   const cellSelect = `${selectClass} !py-1.5 text-sm`;
 
+  // ── render ───────────────────────────────────────────────────────────────────
+
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col gap-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-    >
-      <input type="hidden" name="progress" value="PAY" />
-      <input type="hidden" name="platform" value={platform} />
-
-      {/* ── 상단 주문 정보 2열 그리드 ── */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/* 주문번호 */}
-        <div className="flex flex-col gap-1">
-          <label htmlFor="order_num" className={labelClass}>
-            주문번호 *
-          </label>
-          <input
-            id="order_num"
-            name="order_num"
-            required
-            className={inputClass}
-            placeholder="예: 0212345"
-            autoComplete="off"
-            value={orderNum}
-            onChange={(e) => handleOrderNumChange(e.target.value)}
-          />
-          <span className="text-xs text-zinc-500">
-            플랫폼: <span className="font-medium text-zinc-700 dark:text-zinc-300">{platform}</span>
-            {"  "}(01=avito · 02=telegram · 03=vk)
-          </span>
-        </div>
-
-        {/* 주문 경로 */}
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>주문 경로 *</span>
-          <select name="order_type" required className={selectClass} defaultValue="KOREA">
-            {ORDER_ROUTES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* 고객명 */}
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>고객명</span>
-          <input name="customer_name" className={inputClass} autoComplete="off" />
-        </label>
-
-        {/* 선물 여부 */}
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>선물 여부</span>
-          <select name="gift" className={selectClass} defaultValue="no">
-            <option value="no">no</option>
-            <option value="ask">ask</option>
-          </select>
-        </label>
-
-        {/* 주문일 — 전체 너비 */}
-        <div className="flex flex-col gap-1 sm:col-span-2">
-          <label htmlFor="date" className={labelClass}>
-            주문일 *
-          </label>
-          <input id="date" name="date" type="date" required className={inputClass} defaultValue={today} />
-          <span className="text-xs text-zinc-500">기본값: 모스크바 기준 오늘 날짜 (필요 시 변경 가능)</span>
-        </div>
-      </div>
-
-      {/* ── 상품 테이블 ── */}
-      <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">상품</h2>
-        <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <table className="border-collapse text-left text-sm" style={{ width: "100%", tableLayout: "fixed" }}>
-            <colgroup>
-              <col style={wPx(COL_W.category)} />
-              <col />{/* 상품명 — 남은 공간 전부 */}
-              <col style={wPx(COL_W.option)} />
-              <col style={wPx(COL_W.setType)} />
-              <col style={wPx(COL_W.qty)} />
-              <col style={wPx(COL_W.price)} />
-              <col style={wPx(COL_W.prepay)} />
-              <col style={wPx(COL_W.extra)} />
-              <col style={wPx(COL_W.del)} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className={th}>카테고리</th>
-                <th className={th}>상품명 *</th>
-                <th className={th}>옵션</th>
-                <th className={th}>단품/세트</th>
-                <th className={`${th} text-right`}>수량</th>
-                <th className={`${th} text-right`}>판매가₽ *</th>
-                <th className={`${th} text-right`}>선결제₽</th>
-                <th className={`${th} text-right`}>잔금₽</th>
-                <th className={`${th} text-center`}>삭제</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line) => (
-                <tr key={line.id}>
-                  <td className={td}>
-                    <select
-                      className={`${cellSelect} w-full`}
-                      value={line.product_type}
-                      onChange={(e) => updateLine(line.id, { product_type: e.target.value })}
-                    >
-                      <option value="">—</option>
-                      {PRODUCT_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className={td}>
-                    <input
-                      className={`${cellInput} w-full`}
-                      value={line.product_name}
-                      onChange={(e) => handleProductNameChange(line.id, e.target.value)}
-                      placeholder="필수"
-                    />
-                  </td>
-                  <td className={td}>
-                    <input
-                      className={`${cellInput} w-full`}
-                      value={line.product_option}
-                      onChange={(e) => updateLine(line.id, { product_option: e.target.value })}
-                    />
-                  </td>
-                  <td className={td}>
-                    <select
-                      className={`${cellSelect} w-full`}
-                      value={line.product_set_type}
-                      onChange={(e) => updateLine(line.id, { product_set_type: e.target.value })}
-                    >
-                      {SET_TYPES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className={td}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={9}
-                      maxLength={1}
-                      className={`${cellInput} w-full text-right tabular-nums`}
-                      value={line.quantity}
-                      onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
-                    />
-                  </td>
-                  <td className={td}>
-                    <input
-                      type="number"
-                      step="0.01"
-                      max={9999999}
-                      className={`${cellInput} w-full text-right tabular-nums`}
-                      value={line.price_rub}
-                      onChange={(e) => updateLine(line.id, { price_rub: e.target.value })}
-                      placeholder="필수"
-                    />
-                  </td>
-                  <td className={td}>
-                    <input
-                      type="number"
-                      step="0.01"
-                      max={9999999}
-                      className={`${cellInput} w-full text-right tabular-nums`}
-                      value={line.prepayment_rub}
-                      onChange={(e) => updateLine(line.id, { prepayment_rub: e.target.value })}
-                    />
-                  </td>
-                  <td className={`${td} text-right tabular-nums text-zinc-700 dark:text-zinc-300`}>
-                    {lineExtraRub(line)}
-                  </td>
-                  <td className={`${td} text-center`}>
-                    <button
-                      type="button"
-                      disabled={lines.length <= 1}
-                      className="rounded-md px-1.5 py-1 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/40"
-                      aria-label="행 삭제"
-                      onClick={() => removeLine(line.id)}
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <button
-          type="button"
-          onClick={addLine}
-          className="w-fit rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-        >
-          + 상품 추가
-        </button>
-      </div>
-
-      {formError ? (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-          {formError}
-        </p>
-      ) : null}
-
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-[3fr_2fr]">
+      {/* ── 왼쪽: 주문 입력 폼 ── */}
+      <form
+        onSubmit={editMode ? handleUpdate : handleSubmit}
+        className="flex flex-col gap-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
       >
-        {pending ? "저장 중…" : "주문 저장"}
-      </button>
-    </form>
+        {/* 제목 */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
+            {editMode ? `주문 수정 · ${editOrderNum}` : "새 주문"}
+          </h2>
+          {editMode && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+            >
+              ✕ 취소
+            </button>
+          )}
+        </div>
+
+        {/* ── 상단 주문 정보 2열 그리드 ── */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* 주문번호 */}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="order_num" className={labelClass}>
+              주문번호 *
+            </label>
+            <input
+              id="order_num"
+              name="order_num"
+              required={!editMode}
+              disabled={editMode}
+              className={`${inputClass} ${editMode ? "opacity-60" : ""}`}
+              placeholder="예: 0212345"
+              autoComplete="off"
+              value={orderNum}
+              onChange={(e) => handleOrderNumChange(e.target.value)}
+            />
+            <span className="text-xs text-zinc-500">
+              플랫폼: <span className="font-medium text-zinc-700 dark:text-zinc-300">{platform}</span>
+              {"  "}(01=avito · 02=telegram · 03=vk)
+            </span>
+          </div>
+
+          {/* 주문 경로 */}
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>주문 경로 *</span>
+            <select
+              name="order_type"
+              required
+              className={selectClass}
+              value={orderType}
+              onChange={(e) => setOrderType(e.target.value)}
+            >
+              {ORDER_ROUTES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {/* 고객명 */}
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>고객명</span>
+            <input
+              name="customer_name"
+              className={inputClass}
+              autoComplete="off"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+            />
+          </label>
+
+          {/* 선물 여부 */}
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>선물 여부</span>
+            <select
+              name="gift"
+              className={selectClass}
+              value={gift}
+              onChange={(e) => setGift(e.target.value)}
+            >
+              <option value="no">no</option>
+              <option value="ask">ask</option>
+            </select>
+          </label>
+
+          {/* 주문일 */}
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <label htmlFor="date" className={labelClass}>
+              주문일 *
+            </label>
+            <input
+              id="date"
+              name="date"
+              type="date"
+              required
+              className={inputClass}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+            <span className="text-xs text-zinc-500">기본값: 모스크바 기준 오늘 날짜 (필요 시 변경 가능)</span>
+          </div>
+        </div>
+
+        {/* ── 상품 테이블 ── */}
+        <div className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">상품</h2>
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
+            <table className="border-collapse text-left text-sm" style={{ width: "100%", tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={wPx(COL_W.category)} />
+                <col />
+                <col style={wPx(COL_W.option)} />
+                <col style={wPx(COL_W.setType)} />
+                <col style={wPx(COL_W.qty)} />
+                <col style={wPx(COL_W.price)} />
+                <col style={wPx(COL_W.prepay)} />
+                <col style={wPx(COL_W.extra)} />
+                <col style={wPx(COL_W.del)} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className={th}>카테고리</th>
+                  <th className={th}>상품명 *</th>
+                  <th className={th}>옵션</th>
+                  <th className={th}>단품/세트</th>
+                  <th className={`${th} text-right`}>수량</th>
+                  <th className={`${th} text-right`}>판매가₽ *</th>
+                  <th className={`${th} text-right`}>선결제₽</th>
+                  <th className={`${th} text-right`}>잔금₽</th>
+                  <th className={`${th} text-center`}>삭제</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line) => (
+                  <tr key={line.id}>
+                    <td className={td}>
+                      <select
+                        className={`${cellSelect} w-full`}
+                        value={line.product_type}
+                        onChange={(e) => updateLine(line.id, { product_type: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        {PRODUCT_CATEGORIES.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className={td}>
+                      <input
+                        className={`${cellInput} w-full`}
+                        value={line.product_name}
+                        onChange={(e) => handleProductNameChange(line.id, e.target.value)}
+                        placeholder="필수"
+                      />
+                    </td>
+                    <td className={td}>
+                      <input
+                        className={`${cellInput} w-full`}
+                        value={line.product_option}
+                        onChange={(e) => updateLine(line.id, { product_option: e.target.value })}
+                      />
+                    </td>
+                    <td className={td}>
+                      <select
+                        className={`${cellSelect} w-full`}
+                        value={line.product_set_type}
+                        onChange={(e) => updateLine(line.id, { product_set_type: e.target.value })}
+                      >
+                        {SET_TYPES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className={td}>
+                      <input
+                        type="number"
+                        min={1}
+                        max={9}
+                        maxLength={1}
+                        className={`${cellInput} w-full text-right tabular-nums`}
+                        value={line.quantity}
+                        onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
+                      />
+                    </td>
+                    <td className={td}>
+                      <input
+                        type="number"
+                        step="0.01"
+                        max={9999999}
+                        className={`${cellInput} w-full text-right tabular-nums`}
+                        value={line.price_rub}
+                        onChange={(e) => updateLine(line.id, { price_rub: e.target.value })}
+                        placeholder="필수"
+                      />
+                    </td>
+                    <td className={td}>
+                      <input
+                        type="number"
+                        step="0.01"
+                        max={9999999}
+                        className={`${cellInput} w-full text-right tabular-nums`}
+                        value={line.prepayment_rub}
+                        onChange={(e) => updateLine(line.id, { prepayment_rub: e.target.value })}
+                      />
+                    </td>
+                    <td className={`${td} text-right tabular-nums text-zinc-700 dark:text-zinc-300`}>
+                      {lineExtraRub(line)}
+                    </td>
+                    <td className={`${td} text-center`}>
+                      <button
+                        type="button"
+                        disabled={lines.length <= 1}
+                        className="rounded-md px-1.5 py-1 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/40"
+                        aria-label="행 삭제"
+                        onClick={() => removeLine(line.id)}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button
+            type="button"
+            onClick={addLine}
+            className="w-fit rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            + 상품 추가
+          </button>
+        </div>
+
+        {formError && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+            {formError}
+          </p>
+        )}
+        {formSuccess && (
+          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+            {formSuccess}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+        >
+          {pending ? "저장 중…" : editMode ? "수정 저장" : "주문 저장"}
+        </button>
+      </form>
+
+      {/* ── 오른쪽: 최근 추가한 주문 패널 ── */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">최근 추가한 주문</h2>
+          <button
+            type="button"
+            onClick={() => void fetchRecentOrders()}
+            disabled={recentLoading}
+            className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800"
+          >
+            {recentLoading ? "로딩…" : "새로고침"}
+          </button>
+        </div>
+
+        <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          {recentLoading && recentOrders.length === 0 ? (
+            <p className="p-6 text-center text-sm text-zinc-400">불러오는 중…</p>
+          ) : recentOrders.length === 0 ? (
+            <p className="p-6 text-center text-sm text-zinc-400">최근 주문이 없습니다.</p>
+          ) : (
+            <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {recentOrders.map((order) => {
+                const products = order.order_items
+                  .map((it) => (it.product_option ? stripLastParens(it.product_name) : it.product_name))
+                  .join(", ");
+                const totalRub = order.order_items.reduce((acc, it) => acc + (it.price_rub ?? 0), 0);
+                const isEditing = editMode && editOrderNum === order.order_num;
+
+                return (
+                  <li
+                    key={order.order_num}
+                    className={`flex flex-col gap-1 px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60 ${isEditing ? "bg-sky-50 dark:bg-sky-950/30" : ""}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void loadOrder(order.order_num)}
+                        className="font-mono text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+                      >
+                        {order.order_num}
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${progressBadgeClass(order.progress)}`}
+                        >
+                          {order.progress}
+                        </span>
+                        <span className="text-xs text-zinc-400">불러오기 →</span>
+                      </div>
+                    </div>
+                    <div className="flex items-baseline gap-2 text-xs text-zinc-500">
+                      <span>{order.date?.slice(0, 10) ?? "—"}</span>
+                      {order.customer_name && (
+                        <>
+                          <span>·</span>
+                          <span className="font-medium text-zinc-700 dark:text-zinc-300">{order.customer_name}</span>
+                        </>
+                      )}
+                      <span>·</span>
+                      <span className="tabular-nums text-zinc-600 dark:text-zinc-300">
+                        {totalRub > 0 ? `${totalRub.toLocaleString("ko-KR")} ₽` : "—"}
+                      </span>
+                    </div>
+                    {products && (
+                      <p
+                        className="truncate text-xs text-zinc-400 dark:text-zinc-500"
+                        title={products}
+                      >
+                        {products}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
