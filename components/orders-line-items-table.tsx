@@ -46,8 +46,8 @@ type ItemEditableField =
   | "krw";
 
 type EditTarget =
-  | { kind: "order"; orderNum: string; field: OrderEditableField }
-  | { kind: "item"; itemId: string; orderNum: string; field: ItemEditableField };
+  | { kind: "order"; rowKey: string; orderNum: string; field: OrderEditableField }
+  | { kind: "item"; rowKey: string; itemId: string; orderNum: string; field: ItemEditableField };
 
 const ORDER_FIELD_LABELS: Record<OrderEditableField, string> = {
   progress: "진행",
@@ -567,8 +567,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   const cancelEdit = () => setEditing(null);
 
-  const finishOrderField = async (orderNum: string, field: OrderEditableField) => {
-    if (!editing || editing.kind !== "order" || editing.orderNum !== orderNum || editing.field !== field) return;
+  const finishOrderField = async (rowKey: string, orderNum: string, field: OrderEditableField) => {
+    if (!editing || editing.kind !== "order" || editing.rowKey !== rowKey || editing.field !== field) return;
     const ok = await saveOrderField(orderNum, field, draft, editBaseline);
     if (ok) setEditing(null);
   };
@@ -579,8 +579,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     if (ok) setEditing(null);
   };
 
-  const isEditingOrder = (orderNum: string, field: OrderEditableField) =>
-    editing?.kind === "order" && editing.orderNum === orderNum && editing.field === field;
+  const isEditingOrder = (rowKey: string, field: OrderEditableField) =>
+    editing?.kind === "order" && editing.rowKey === rowKey && editing.field === field;
 
   const isEditingItem = (itemId: string, field: ItemEditableField) =>
     editing?.kind === "item" && editing.itemId === itemId && editing.field === field;
@@ -705,9 +705,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               const g = groupRowClass(groupColorIndex);
               const on = order.order_num;
               const id = item.id;
+              const rowKey = `${on}-${id}`;
 
               return (
-                <tr key={`${on}-${id}`} className={g}>
+                <tr key={rowKey} className={g}>
                   <td className={`${tdBase} font-mono font-medium ${g}`}>
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
@@ -720,8 +721,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   <td className={`${tdBase} ${g}`}>{order.platform}</td>
                   <td className={`${tdBase} ${g}`}>{order.order_type}</td>
 
-                  <td className={`${tdBase} ${isEditingOrder(on, "progress") ? editingBg : ""} ${g}`}>
-                    {isEditingOrder(on, "progress") ? (
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "progress") ? editingBg : ""} ${g}`}>
+                    {isEditingOrder(rowKey, "progress") ? (
                       <select
                         ref={selectRef}
                         className="w-full min-w-[7rem] rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
@@ -745,7 +746,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                       <button
                         type="button"
                         className={cellBtn}
-                        onClick={() => startEdit({ kind: "order", orderNum: on, field: "progress" }, order.progress)}
+                        onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "progress" }, order.progress)}
                       >
                         <span
                           className={`inline-flex max-w-[140px] truncate rounded-full px-2 py-0.5 text-xs font-medium ${progressBadgeClass(order.progress)}`}
@@ -756,14 +757,14 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  <td className={`${tdBase} max-w-[120px] ${isEditingOrder(on, "customer_name") ? editingBg : ""} ${g}`}>
-                    {isEditingOrder(on, "customer_name") ? (
+                  <td className={`${tdBase} max-w-[120px] ${isEditingOrder(rowKey, "customer_name") ? editingBg : ""} ${g}`}>
+                    {isEditingOrder(rowKey, "customer_name") ? (
                       <input
                         ref={inputRef}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishOrderField(on, "customer_name")}
+                        onBlur={() => void finishOrderField(rowKey, on, "customer_name")}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -775,7 +776,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className={`${cellBtn} truncate`}
                         title={order.customer_name ?? ""}
                         onClick={() =>
-                          startEdit({ kind: "order", orderNum: on, field: "customer_name" }, order.customer_name ?? "")
+                          startEdit({ kind: "order", rowKey, orderNum: on, field: "customer_name" }, order.customer_name ?? "")
                         }
                       >
                         {order.customer_name ?? "—"}
@@ -783,8 +784,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  <td className={`${tdBase} ${isEditingOrder(on, "gift") ? editingBg : ""} ${g}`}>
-                    {isEditingOrder(on, "gift") ? (
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "gift") ? editingBg : ""} ${g}`}>
+                    {isEditingOrder(rowKey, "gift") ? (
                       <select
                         ref={selectRef}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
@@ -806,7 +807,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         type="button"
                         className={cellBtn}
                         onClick={() =>
-                          startEdit({ kind: "order", orderNum: on, field: "gift" }, order.gift === "ask" ? "ask" : "no")
+                          startEdit({ kind: "order", rowKey, orderNum: on, field: "gift" }, order.gift === "ask" ? "ask" : "no")
                         }
                       >
                         {order.gift === "ask" ? "ask" : "no"}
@@ -814,14 +815,14 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  <td className={`${tdBase} max-w-[100px] ${isEditingOrder(on, "purchase_channel") ? editingBg : ""} ${g}`}>
-                    {isEditingOrder(on, "purchase_channel") ? (
+                  <td className={`${tdBase} max-w-[100px] ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : ""} ${g}`}>
+                    {isEditingOrder(rowKey, "purchase_channel") ? (
                       <input
                         ref={inputRef}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishOrderField(on, "purchase_channel")}
+                        onBlur={() => void finishOrderField(rowKey, on, "purchase_channel")}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -834,7 +835,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         title={order.purchase_channel ?? ""}
                         onClick={() =>
                           startEdit(
-                            { kind: "order", orderNum: on, field: "purchase_channel" },
+                            { kind: "order", rowKey, orderNum: on, field: "purchase_channel" },
                             order.purchase_channel ?? "",
                           )
                         }
@@ -871,7 +872,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         type="button"
                         className={cellBtn}
                         onClick={() =>
-                          startEdit({ kind: "item", itemId: id, orderNum: on, field: "product_type" }, item.product_type ?? "")
+                          startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_type" }, item.product_type ?? "")
                         }
                       >
                         {item.product_type ?? "—"}
@@ -898,7 +899,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                       <button
                         type="button"
                         className={`${cellBtn} text-right`}
-                        onClick={() => startEdit({ kind: "item", itemId: id, orderNum: on, field: "quantity" }, String(item.quantity))}
+                        onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "quantity" }, String(item.quantity))}
                       >
                         {item.quantity}
                       </button>
@@ -908,6 +909,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   <LineItemCells
                     item={item}
                     orderNum={on}
+                    rowKey={rowKey}
                     groupClass={g}
                     draft={draft}
                     editBaseline={editBaseline}
@@ -936,6 +938,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 function LineItemCells({
   item,
   orderNum,
+  rowKey,
   groupClass,
   draft,
   editBaseline,
@@ -953,6 +956,7 @@ function LineItemCells({
 }: {
   item: OrderItemRow;
   orderNum: string;
+  rowKey: string;
   groupClass: string;
   draft: string;
   editBaseline: string;
@@ -969,7 +973,7 @@ function LineItemCells({
     oldRaw: string,
     itemBefore: OrderItemRow,
   ) => Promise<boolean>;
-  isEditingOrder: (orderNum: string, field: OrderEditableField) => boolean;
+  isEditingOrder: (rowKey: string, field: OrderEditableField) => boolean;
   isEditingItem: (itemId: string, field: ItemEditableField) => boolean;
   order: OrderRow;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -998,7 +1002,7 @@ function LineItemCells({
           <button
             type="button"
             className={`${cellBtn} line-clamp-2`}
-            onClick={() => startEdit({ kind: "item", itemId: id, orderNum: on, field: "product_name" }, item.product_name)}
+            onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_name" }, item.product_name)}
           >
             {item.product_name}
           </button>
@@ -1023,7 +1027,7 @@ function LineItemCells({
             type="button"
             className={`${cellBtn} truncate`}
             onClick={() =>
-              startEdit({ kind: "item", itemId: id, orderNum: on, field: "product_option" }, item.product_option ?? "")
+              startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_option" }, item.product_option ?? "")
             }
           >
             {item.product_option ?? "—"}
@@ -1057,7 +1061,7 @@ function LineItemCells({
             type="button"
             className={cellBtn}
             onClick={() =>
-              startEdit({ kind: "item", itemId: id, orderNum: on, field: "product_set_type" }, item.product_set_type)
+              startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_set_type" }, item.product_set_type)
             }
           >
             {item.product_set_type}
@@ -1065,8 +1069,8 @@ function LineItemCells({
         )}
       </td>
 
-      <td className={`${td} ${isEditingOrder(on, "photo_sent") ? editingBg : ""}`}>
-        {isEditingOrder(on, "photo_sent") ? (
+      <td className={`${td} ${isEditingOrder(rowKey, "photo_sent") ? editingBg : ""}`}>
+        {isEditingOrder(rowKey, "photo_sent") ? (
           <select
             ref={selectRef}
             className="w-full min-w-[6rem] rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
@@ -1090,7 +1094,7 @@ function LineItemCells({
           <button
             type="button"
             className={`${cellBtn} truncate`}
-            onClick={() => startEdit({ kind: "order", orderNum: on, field: "photo_sent" }, order.photo_sent)}
+            onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "photo_sent" }, order.photo_sent)}
           >
             {order.photo_sent}
           </button>
@@ -1116,7 +1120,7 @@ function LineItemCells({
           <button
             type="button"
             className={`${cellBtn} text-right`}
-            onClick={() => startEdit({ kind: "item", itemId: id, orderNum: on, field: "price_rub" }, String(item.price_rub))}
+            onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "price_rub" }, String(item.price_rub))}
           >
             {fmtRub(item.price_rub)}
           </button>
@@ -1142,7 +1146,7 @@ function LineItemCells({
           <button
             type="button"
             className={`${cellBtn} text-right`}
-            onClick={() => startEdit({ kind: "item", itemId: id, orderNum: on, field: "krw" }, item.krw != null ? String(item.krw) : "")}
+            onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "krw" }, item.krw != null ? String(item.krw) : "")}
           >
             {fmtKrw(item.krw)}
           </button>
@@ -1169,7 +1173,7 @@ function LineItemCells({
             type="button"
             className={`${cellBtn} text-right`}
             onClick={() =>
-              startEdit({ kind: "item", itemId: id, orderNum: on, field: "prepayment_rub" }, String(item.prepayment_rub))
+              startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "prepayment_rub" }, String(item.prepayment_rub))
             }
           >
             {fmtRub(item.prepayment_rub)}
