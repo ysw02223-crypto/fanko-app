@@ -4,7 +4,7 @@ import Link from "next/link";
 export function CrmShell({ email, children }: { email: string; children: React.ReactNode }) {
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
-      <header className="sticky top-0 z-10 border-b border-zinc-200/80 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+      <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
         <div className="flex h-14 w-full items-center gap-6 px-6">
           <nav className="flex items-center gap-6 text-sm font-medium">
             <Link href="/orders" className="text-emerald-700 dark:text-emerald-400">
@@ -36,6 +36,8 @@ export function CrmShell({ email, children }: { email: string; children: React.R
           </div>
         </div>
       </header>
+      {/* 페이지별 sticky 서브헤더를 portal로 렌더링하는 슬롯 */}
+      <div id="crm-subheader-portal" className="sticky top-[57px] z-40" />
       <main className="w-full flex-1 px-4 py-8">{children}</main>
     </div>
   );

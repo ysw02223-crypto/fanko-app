@@ -17,6 +17,7 @@ import {
 } from "@/lib/schema";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const ORDER_SELECT = `
   *,
@@ -263,6 +264,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const savingRef = useRef(false);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     platform: "",
@@ -319,6 +321,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   useEffect(() => {
     setFlatRows(flattenOrders(initialOrders));
   }, [initialOrders]);
+
+  useEffect(() => {
+    setPortalEl(document.getElementById("crm-subheader-portal"));
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -873,72 +879,75 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         변경 이력 {history.length > 0 ? `(${history.length})` : ""}
       </button>
 
-      {/* 필터 바 */}
-      <div className="sticky top-[57px] z-10 -mx-4 border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterDropdown
-          label="진행"
-          field="progress"
-          options={[{ label: "전체", value: "" }, ...ORDER_PROGRESS.map((p) => ({ label: p, value: p }))]}
-        />
-        <FilterDropdown
-          label="플랫폼"
-          field="platform"
-          options={[{ label: "전체", value: "" }, ...PLATFORMS.map((p) => ({ label: p, value: p }))]}
-        />
-        <FilterDropdown
-          label="단품/세트"
-          field="setType"
-          options={[
-            { label: "전체", value: "" },
-            { label: "Single", value: "Single" },
-            { label: "SET", value: "SET" },
-          ]}
-        />
-        <FilterDropdown
-          label="선물"
-          field="gift"
-          options={[
-            { label: "전체", value: "" },
-            { label: "no", value: "no" },
-            { label: "ask", value: "ask" },
-          ]}
-        />
-        <FilterDropdown
-          label="사진"
-          field="photoSent"
-          options={[{ label: "전체", value: "" }, ...PHOTO_STATUS.map((s) => ({ label: s, value: s }))]}
-        />
-        <FilterDropdown
-          label="잔금"
-          field="hasBalance"
-          options={[
-            { label: "전체", value: "" },
-            { label: "잔금 있음", value: "yes" },
-            { label: "잔금 없음", value: "no" },
-          ]}
-        />
-        {hasActiveFilter && (
-          <button
-            type="button"
-            onClick={() =>
-              setFilters({ platform: "", progress: "", setType: "", gift: "", photoSent: "", hasBalance: "" })
-            }
-            className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
-          >
-            초기화
-          </button>
-        )}
-        <input
-          type="text"
-          placeholder="주문번호·상품명·고객·옵션 검색…"
-          className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-          style={{ minWidth: "220px" }}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
-      </div>
+      {/* 필터 바 — crm-subheader-portal (main 바깥 sticky 슬롯)으로 portal 렌더링 */}
+      {portalEl && createPortal(
+        <div className="w-full border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterDropdown
+              label="진행"
+              field="progress"
+              options={[{ label: "전체", value: "" }, ...ORDER_PROGRESS.map((p) => ({ label: p, value: p }))]}
+            />
+            <FilterDropdown
+              label="플랫폼"
+              field="platform"
+              options={[{ label: "전체", value: "" }, ...PLATFORMS.map((p) => ({ label: p, value: p }))]}
+            />
+            <FilterDropdown
+              label="단품/세트"
+              field="setType"
+              options={[
+                { label: "전체", value: "" },
+                { label: "Single", value: "Single" },
+                { label: "SET", value: "SET" },
+              ]}
+            />
+            <FilterDropdown
+              label="선물"
+              field="gift"
+              options={[
+                { label: "전체", value: "" },
+                { label: "no", value: "no" },
+                { label: "ask", value: "ask" },
+              ]}
+            />
+            <FilterDropdown
+              label="사진"
+              field="photoSent"
+              options={[{ label: "전체", value: "" }, ...PHOTO_STATUS.map((s) => ({ label: s, value: s }))]}
+            />
+            <FilterDropdown
+              label="잔금"
+              field="hasBalance"
+              options={[
+                { label: "전체", value: "" },
+                { label: "잔금 있음", value: "yes" },
+                { label: "잔금 없음", value: "no" },
+              ]}
+            />
+            {hasActiveFilter && (
+              <button
+                type="button"
+                onClick={() =>
+                  setFilters({ platform: "", progress: "", setType: "", gift: "", photoSent: "", hasBalance: "" })
+                }
+                className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              >
+                초기화
+              </button>
+            )}
+            <input
+              type="text"
+              placeholder="주문번호·상품명·고객·옵션 검색…"
+              className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+              style={{ minWidth: "220px" }}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>,
+        portalEl,
+      )}
 
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         주문 {orderCount}건 · 표시 행 {lineCount}줄 · 테이블을 드래그하면 좌우로 스크롤됩니다.
@@ -981,22 +990,22 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <th className={`${thClass} sticky top-[105px] z-30`} style={{ left: "78px", width: "90px", minWidth: "90px" }}>주문번호</th>
               {/* sticky: 상품명 */}
               <th className={`${thClass} sticky top-[105px] z-30 text-left`} style={{ left: "168px", minWidth: "300px" }}>상품명</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[180px] text-left`}>옵션</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[112px]`}>진행</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[72px]`}>단품/세트</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[52px]`}>선물</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>사진</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[100px]`}>일자</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[72px]`}>플랫폼</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[72px]`}>경로</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[100px]`}>고객</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>거래처</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>카테고리</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[48px]`}>수량</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>판매가₽</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[88px]`}>원화매입</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[80px]`}>선결제₽</th>
-              <th className={`${thClass} sticky top-[105px] min-w-[72px] border-r-0`}>잔금₽</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[180px] text-left`}>옵션</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[112px]`}>진행</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[72px]`}>단품/세트</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[52px]`}>선물</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>사진</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[100px]`}>일자</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[72px]`}>플랫폼</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[72px]`}>경로</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[100px]`}>고객</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>거래처</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>카테고리</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[48px]`}>수량</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>판매가₽</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[88px]`}>원화매입</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[80px]`}>선결제₽</th>
+              <th className={`${thClass} sticky top-[105px] z-20 min-w-[72px] border-r-0`}>잔금₽</th>
             </tr>
           </thead>
           <tbody>
