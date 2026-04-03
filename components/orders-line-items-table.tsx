@@ -259,7 +259,6 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const [undoingId, setUndoingId] = useState<string | null>(null);
 
   const tableRef = useRef<HTMLDivElement>(null);
-  const headerScrollRef = useRef<HTMLDivElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
@@ -343,18 +342,6 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     const t = setTimeout(() => setToast(null), 4500);
     return () => clearTimeout(t);
   }, [toast]);
-
-  useEffect(() => {
-    const bodyEl = tableRef.current;
-    const headerEl = headerScrollRef.current;
-    if (!bodyEl || !headerEl) return;
-    const onScroll = () => {
-      headerEl.scrollLeft = bodyEl.scrollLeft;
-    };
-    onScroll();
-    bodyEl.addEventListener("scroll", onScroll);
-    return () => bodyEl.removeEventListener("scroll", onScroll);
-  }, []);
 
   useEffect(() => {
     const el = tableRef.current;
@@ -1025,72 +1012,6 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       </p>
 
       <div className="w-full rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        {/* 클리핑 전용 — sticky 바깥이라 th의 sticky 스크롤 컨테이너가 되지 않음 */}
-        <div style={{ overflow: "hidden" }}>
-          <div
-            className="sticky top-[108px] z-20 bg-white dark:bg-zinc-950"
-            style={{ overflow: "visible" }}
-          >
-            {/* scrollLeft 동기화용(overflow:visible인 sticky에는 scrollLeft가 먹지 않음) */}
-            <div
-              ref={headerScrollRef}
-              className="w-full min-w-0 max-w-full"
-              style={{ overflow: "visible" }}
-            >
-              <table
-                className="min-w-full border-collapse text-left text-sm"
-                style={{ tableLayout: "fixed", width: "100%", minWidth: 1928 }}
-              >
-                <colgroup>
-                  <col style={{ width: "32px" }} />
-                  <col style={{ width: "46px" }} />
-                  <col style={{ width: "90px" }} />
-                  <col style={{ width: "320px" }} />
-                  <col style={{ width: "180px" }} />
-                  <col style={{ width: "112px" }} />
-                  <col style={{ width: "72px" }} />
-                  <col style={{ width: "52px" }} />
-                  <col style={{ width: "88px" }} />
-                  <col style={{ width: "100px" }} />
-                  <col style={{ width: "72px" }} />
-                  <col style={{ width: "72px" }} />
-                  <col style={{ width: "140px" }} />
-                  <col style={{ width: "88px" }} />
-                  <col style={{ width: "88px" }} />
-                  <col style={{ width: "48px" }} />
-                  <col style={{ width: "88px" }} />
-                  <col style={{ width: "88px" }} />
-                  <col style={{ width: "80px" }} />
-                  <col style={{ width: "72px" }} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th className={`${thClass} sticky left-0 z-30`}>#</th>
-                    <th className={`${thClass} sticky left-[32px] z-30`}>날짜</th>
-                    <th className={`${thClass} sticky left-[78px] z-30`}>주문번호</th>
-                    <th className={`${thClass} sticky left-[168px] z-30 text-left`}>상품명</th>
-                    <th className={`${thClass} text-left`}>옵션</th>
-                    <th className={thClass}>진행</th>
-                    <th className={thClass}>단품/세트</th>
-                    <th className={thClass}>선물</th>
-                    <th className={thClass}>사진</th>
-                    <th className={thClass}>일자</th>
-                    <th className={thClass}>플랫폼</th>
-                    <th className={thClass}>경로</th>
-                    <th className={thClass}>고객</th>
-                    <th className={thClass}>거래처</th>
-                    <th className={thClass}>카테고리</th>
-                    <th className={thClass}>수량</th>
-                    <th className={thClass}>판매가₽</th>
-                    <th className={thClass}>원화매입</th>
-                    <th className={thClass}>선결제₽</th>
-                    <th className={`${thClass} border-r-0`}>잔금₽</th>
-                  </tr>
-                </thead>
-              </table>
-            </div>
-          </div>
-        </div>
         <div ref={tableRef} style={{ overflowX: "auto", overflowY: "visible" }}>
           <table
             className="min-w-full border-collapse text-left text-sm"
@@ -1118,28 +1039,28 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <col style={{ width: "80px" }} />
               <col style={{ width: "72px" }} />
             </colgroup>
-            <thead className="sr-only">
+            <thead className="sticky top-[108px] z-20 bg-white dark:bg-zinc-950">
               <tr>
-                <th scope="col">#</th>
-                <th scope="col">날짜</th>
-                <th scope="col">주문번호</th>
-                <th scope="col">상품명</th>
-                <th scope="col">옵션</th>
-                <th scope="col">진행</th>
-                <th scope="col">단품/세트</th>
-                <th scope="col">선물</th>
-                <th scope="col">사진</th>
-                <th scope="col">일자</th>
-                <th scope="col">플랫폼</th>
-                <th scope="col">경로</th>
-                <th scope="col">고객</th>
-                <th scope="col">거래처</th>
-                <th scope="col">카테고리</th>
-                <th scope="col">수량</th>
-                <th scope="col">판매가₽</th>
-                <th scope="col">원화매입</th>
-                <th scope="col">선결제₽</th>
-                <th scope="col">잔금₽</th>
+                <th className={`${thClass} sticky left-0 z-30`}>#</th>
+                <th className={`${thClass} sticky left-[32px] z-30`}>날짜</th>
+                <th className={`${thClass} sticky left-[78px] z-30`}>주문번호</th>
+                <th className={`${thClass} sticky left-[168px] z-30 text-left`}>상품명</th>
+                <th className={`${thClass} text-left`}>옵션</th>
+                <th className={thClass}>진행</th>
+                <th className={thClass}>단품/세트</th>
+                <th className={thClass}>선물</th>
+                <th className={thClass}>사진</th>
+                <th className={thClass}>일자</th>
+                <th className={thClass}>플랫폼</th>
+                <th className={thClass}>경로</th>
+                <th className={thClass}>고객</th>
+                <th className={thClass}>거래처</th>
+                <th className={thClass}>카테고리</th>
+                <th className={thClass}>수량</th>
+                <th className={thClass}>판매가₽</th>
+                <th className={thClass}>원화매입</th>
+                <th className={thClass}>선결제₽</th>
+                <th className={`${thClass} border-r-0`}>잔금₽</th>
               </tr>
             </thead>
           <tbody>
