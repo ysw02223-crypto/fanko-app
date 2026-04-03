@@ -213,18 +213,7 @@ function getOrderColor(orderNum: string): (typeof ORDER_COLORS)[number] {
   return ORDER_COLORS[hash % ORDER_COLORS.length];
 }
 
-const PROGRESS_ORDER = [
-  "PAY",
-  "BUY IN KOREA",
-  "ARRIVE KOR",
-  "IN DELIVERY",
-  "ARRIVE RUS",
-  "RU DELIVERY",
-  "DONE",
-  "WAIT CUSTOMER",
-  "PROBLEM",
-  "CANCEL",
-];
+const TOP_GROUP = ["PAY", "BUY IN KOREA", "ARRIVE KOR", "IN DELIVERY"];
 
 const CLICK_SLOP_PX = 5;
 
@@ -249,13 +238,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const displayRows = useMemo(() => {
     const rows = flatRows.filter((r): r is FlatOrderItemRow & { item: OrderItemRow } => r.item !== null);
     rows.sort((a, b) => {
-      const pa = PROGRESS_ORDER.indexOf(a.order.progress);
-      const pb = PROGRESS_ORDER.indexOf(b.order.progress);
-      const progressDiff = (pa === -1 ? 999 : pa) - (pb === -1 ? 999 : pb);
-      if (progressDiff !== 0) return progressDiff;
-      const dateA = a.order.date ?? "";
-      const dateB = b.order.date ?? "";
-      if (dateA !== dateB) return dateA < dateB ? -1 : 1;
+      const aIsTop = TOP_GROUP.includes(a.order.progress);
+      const bIsTop = TOP_GROUP.includes(b.order.progress);
+      if (aIsTop && !bIsTop) return -1;
+      if (!aIsTop && bIsTop) return 1;
+      const dateA = new Date(a.order.date ?? "").getTime();
+      const dateB = new Date(b.order.date ?? "").getTime();
+      if (dateA !== dateB) return dateA - dateB;
       return a.order.order_num.localeCompare(b.order.order_num);
     });
     return rows;
@@ -791,11 +780,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           <thead>
             <tr>
               {/* sticky: # */}
-              <th className={`${thClass} sticky left-0 top-0 z-30 w-[40px]`}>#</th>
+              <th className={`${thClass} sticky left-0 top-0 z-30 w-[32px]`}>#</th>
+              {/* sticky: 날짜 */}
+              <th className={`${thClass} sticky left-[32px] top-0 z-30 w-[44px]`}>날짜</th>
               {/* sticky: 주문번호 */}
-              <th className={`${thClass} sticky left-[40px] top-0 z-30 min-w-[120px]`}>주문번호</th>
+              <th className={`${thClass} sticky left-[76px] top-0 z-30 w-[90px]`}>주문번호</th>
               {/* sticky: 상품명 */}
-              <th className={`${thClass} sticky left-[160px] top-0 z-30 min-w-[300px] text-left`}>상품명</th>
+              <th className={`${thClass} sticky left-[166px] top-0 z-30 min-w-[300px] text-left`}>상품명</th>
               <th className={`${thClass} min-w-[180px] text-left`}>옵션</th>
               <th className={`${thClass} min-w-[112px]`}>진행</th>
               <th className={`${thClass} min-w-[72px]`}>단품/세트</th>
@@ -834,12 +825,20 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               return (
                 <tr key={rowKey} className={g}>
                   {/* # 줄 번호 */}
-                  <td className={`${tdBase} sticky left-0 z-20 w-[40px] text-xs text-zinc-400 dark:text-zinc-500 ${stickyBg}`}>
+                  <td className={`${tdBase} sticky left-0 z-20 w-[32px] text-xs text-zinc-400 dark:text-zinc-500 ${stickyBg}`}>
                     {idx + 1}
                   </td>
 
+                  {/* 날짜 */}
+                  <td className={`${tdBase} sticky left-[32px] z-20 w-[44px] whitespace-nowrap text-xs text-gray-500 ${stickyBg}`}>
+                    {order.date ? (() => {
+                      const d = new Date(order.date);
+                      return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+                    })() : "—"}
+                  </td>
+
                   {/* 주문번호 */}
-                  <td className={`${tdBase} sticky left-[40px] z-20 font-mono font-medium ${orderColor.bg}`}>
+                  <td className={`${tdBase} sticky left-[76px] z-20 w-[90px] font-mono font-medium ${orderColor.bg}`}>
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
                       className={`${orderColor.text} hover:underline`}
@@ -850,7 +849,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 상품명 */}
                   <td
-                    className={`${tdBase} sticky left-[160px] z-20 text-left ${isEditingItem(id, "product_name") ? editingBg : ""} ${stickyBg}`}
+                    className={`${tdBase} sticky left-[166px] z-20 text-left ${isEditingItem(id, "product_name") ? editingBg : ""} ${stickyBg}`}
                     title={item.product_name}
                   >
                     {isEditingItem(id, "product_name") ? (
