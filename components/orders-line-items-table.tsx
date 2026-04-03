@@ -133,8 +133,8 @@ function displayItemField(field: ItemEditableField, raw: string): string {
 }
 
 const thClass =
-  "whitespace-nowrap border-b border-zinc-200 bg-zinc-50 px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400";
-const tdBase = "border-b border-zinc-200/80 px-2 py-1.5 align-middle text-center text-sm dark:border-zinc-700/80";
+  "whitespace-nowrap border-b-2 border-r border-zinc-300 bg-zinc-50 px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
+const tdBase = "border-b border-r border-zinc-200 px-2 py-1.5 align-middle text-center text-sm dark:border-zinc-700";
 const cellBtn =
   "w-full cursor-pointer rounded px-1 py-0.5 text-center transition hover:bg-black/5 dark:hover:bg-white/10";
 const cellBtnLeft =
@@ -145,6 +145,29 @@ function groupRowClass(groupIdx: number) {
   return groupIdx % 2 === 0
     ? "bg-white dark:bg-zinc-950"
     : "bg-zinc-100/90 dark:bg-zinc-900/70";
+}
+
+/** Fully opaque bg for sticky cells (prevents content bleed-through while scrolling) */
+function groupStickyBg(groupIdx: number) {
+  return groupIdx % 2 === 0
+    ? "bg-white dark:bg-zinc-950"
+    : "bg-zinc-100 dark:bg-zinc-900";
+}
+
+function getProgressStyle(progress: string): string {
+  switch (progress) {
+    case "PAY":           return "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300";
+    case "BUY IN KOREA":  return "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300";
+    case "ARRIVE KOR":    return "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300";
+    case "IN DELIVERY":   return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300";
+    case "ARRIVE RUS":    return "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300";
+    case "RU DELIVERY":   return "bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300";
+    case "DONE":          return "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300";
+    case "WAIT CUSTOMER": return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300";
+    case "PROBLEM":       return "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
+    case "CANCEL":        return "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400";
+    default:              return "bg-gray-100 text-gray-500";
+  }
 }
 
 function buildItemRevertUpdates(field: ItemEditableField, before: OrderItemRow): Record<string, unknown> {
@@ -753,8 +776,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         <table className="w-max min-w-full border-collapse text-left text-sm">
           <thead>
             <tr>
-              <th className={`${thClass} min-w-[120px]`}>주문번호</th>
-              <th className={`${thClass} min-w-[300px] text-left`}>상품명</th>
+              {/* sticky: # */}
+              <th className={`${thClass} sticky left-0 top-0 z-30 w-[40px]`}>#</th>
+              {/* sticky: 주문번호 */}
+              <th className={`${thClass} sticky left-[40px] top-0 z-30 min-w-[120px]`}>주문번호</th>
+              {/* sticky: 상품명 */}
+              <th className={`${thClass} sticky left-[160px] top-0 z-30 min-w-[300px] text-left`}>상품명</th>
               <th className={`${thClass} min-w-[180px] text-left`}>옵션</th>
               <th className={`${thClass} min-w-[112px]`}>진행</th>
               <th className={`${thClass} min-w-[72px]`}>단품/세트</th>
@@ -770,20 +797,21 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <th className={`${thClass} min-w-[88px]`}>판매가₽</th>
               <th className={`${thClass} min-w-[88px]`}>원화매입</th>
               <th className={`${thClass} min-w-[80px]`}>선결제₽</th>
-              <th className={`${thClass} min-w-[72px]`}>잔금₽</th>
+              <th className={`${thClass} min-w-[72px] border-r-0`}>잔금₽</th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                <td colSpan={19} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
                   검색 결과가 없습니다.
                 </td>
               </tr>
             ) : null}
-            {filteredRows.map((row) => {
+            {filteredRows.map((row, idx) => {
               const { order, item, groupColorIndex } = row;
               const g = groupRowClass(groupColorIndex);
+              const stickyBg = groupStickyBg(groupColorIndex);
               const on = order.order_num;
               const id = item.id;
               const rowKey = `${on}-${id}`;
@@ -791,8 +819,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
               return (
                 <tr key={rowKey} className={g}>
+                  {/* # 줄 번호 */}
+                  <td className={`${tdBase} sticky left-0 z-20 w-[40px] text-xs text-zinc-400 dark:text-zinc-500 ${stickyBg}`}>
+                    {idx + 1}
+                  </td>
+
                   {/* 주문번호 */}
-                  <td className={`${tdBase} font-mono font-medium ${orderColor.bg}`}>
+                  <td className={`${tdBase} sticky left-[40px] z-20 font-mono font-medium ${orderColor.bg}`}>
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
                       className={`${orderColor.text} hover:underline`}
@@ -803,7 +836,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 상품명 */}
                   <td
-                    className={`${tdBase} text-left ${isEditingItem(id, "product_name") ? editingBg : ""} ${g}`}
+                    className={`${tdBase} sticky left-[160px] z-20 text-left ${isEditingItem(id, "product_name") ? editingBg : ""} ${stickyBg}`}
                     title={item.product_name}
                   >
                     {isEditingItem(id, "product_name") ? (
@@ -862,7 +895,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 진행 */}
-                  <td className={`${tdBase} ${isEditingOrder(rowKey, "progress") ? editingBg : ""} ${g}`}>
+                  <td className={`${tdBase} p-1 ${isEditingOrder(rowKey, "progress") ? editingBg : ""} ${g}`}>
                     {isEditingOrder(rowKey, "progress") ? (
                       <select
                         ref={selectRef}
@@ -886,14 +919,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     ) : (
                       <button
                         type="button"
-                        className={cellBtn}
+                        className={`${getProgressStyle(order.progress)} w-full min-h-[28px] flex items-center justify-center rounded-lg text-xs font-medium transition hover:opacity-80`}
                         onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "progress" }, order.progress)}
                       >
-                        <span
-                          className={`inline-flex max-w-[140px] truncate rounded-full px-2 py-0.5 text-xs font-medium ${progressBadgeClass(order.progress)}`}
-                        >
-                          {order.progress}
-                        </span>
+                        {order.progress}
                       </button>
                     )}
                   </td>
@@ -1213,7 +1242,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 잔금₽ */}
-                  <td className={`${tdBase} tabular-nums text-zinc-700 dark:text-zinc-300 ${g}`}>
+                  <td className={`${tdBase} border-r-0 tabular-nums text-zinc-700 dark:text-zinc-300 ${g}`}>
                     {fmtRub(computedExtra(item))}
                   </td>
                 </tr>
