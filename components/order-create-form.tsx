@@ -628,7 +628,10 @@ export function OrderCreateForm() {
         <div className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">상품</h2>
           <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-            <table className="border-collapse text-left text-sm" style={{ width: "100%", tableLayout: "fixed" }}>
+            <table
+              className="min-w-[820px] border-collapse text-left text-sm"
+              style={{ width: "100%", tableLayout: "fixed" }}
+            >
               <colgroup>
                 <col style={wPx(COL_W.category)} />
                 <col />
@@ -642,15 +645,15 @@ export function OrderCreateForm() {
               </colgroup>
               <thead>
                 <tr>
-                  <th className={th}>카테고리</th>
-                  <th className={th}>상품명 *</th>
-                  <th className={th}>옵션</th>
-                  <th className={th}>단품/세트</th>
-                  <th className={`${th} text-center`}>수량</th>
-                  <th className={`${th} text-right`}>판매가₽ *</th>
-                  <th className={`${th} text-right`}>선결제₽</th>
-                  <th className={`${th} text-right`}>잔금₽</th>
-                  <th className={thLast}>삭제</th>
+                  <th className={`${th} min-w-[120px]`}>카테고리</th>
+                  <th className={`${th} min-w-[160px]`}>상품명 *</th>
+                  <th className={`${th} min-w-[180px]`}>옵션</th>
+                  <th className={`${th} min-w-[110px]`}>단품/세트</th>
+                  <th className={`${th} min-w-[60px] text-center`}>수량</th>
+                  <th className={`${th} min-w-[100px] text-right`}>판매가₽ *</th>
+                  <th className={`${th} min-w-[90px] text-right`}>선결제₽</th>
+                  <th className={`${th} min-w-[80px] text-right`}>잔금₽</th>
+                  <th className={`${thLast} min-w-[36px]`}>삭제</th>
                 </tr>
               </thead>
               <tbody>
