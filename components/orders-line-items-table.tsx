@@ -483,6 +483,38 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     setToast(msg);
   }, []);
 
+  /**
+   * select 필드 즉시 저장 — savingRef 없이 직접 DB 업데이트 후 해당 order 전체 리프레시.
+   * progress / gift / photo_sent / product_set_type / product_type 에 사용.
+   */
+  const quickSaveItem = useCallback(
+    async (itemId: string, orderNum: string, field: string, value: unknown) => {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("order_items")
+        .update({ [field]: value })
+        .eq("id", itemId);
+      if (error) {
+        showError(`저장 실패: ${error.message}`);
+        setEditing(null);
+        return;
+      }
+      const { data, error: fetchErr } = await supabase
+        .from("orders")
+        .select(ORDER_SELECT)
+        .eq("order_num", orderNum)
+        .single();
+      if (fetchErr || !data) {
+        showError(fetchErr?.message ?? "데이터 새로고침 실패");
+        setEditing(null);
+        return;
+      }
+      setFlatRows((prev) => replaceOrderSegment(prev, orderNum, data as OrderWithNestedItems));
+      setEditing(null);
+    },
+    [showError],
+  );
+
   const pushHistory = useCallback((entry: Omit<HistoryEntry, "id" | "at">) => {
     setHistory((h) =>
       [{ id: crypto.randomUUID(), at: Date.now(), ...entry }, ...h].slice(0, 10),
@@ -1129,11 +1161,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full min-w-[7rem] rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          setDraft(v);
-                          void saveItemField(id, on, "progress", v, editBaseline, item).then((ok) => {
-                            if (ok) cancelEdit();
-                          });
+                          setDraft(e.target.value);
+                          void quickSaveItem(id, on, "progress", e.target.value);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
@@ -1160,11 +1189,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          setDraft(v);
-                          void saveItemField(id, on, "product_set_type", v, editBaseline, item).then((ok) => {
-                            if (ok) cancelEdit();
-                          });
+                          setDraft(e.target.value);
+                          void quickSaveItem(id, on, "product_set_type", e.target.value);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
@@ -1195,11 +1221,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          setDraft(v);
-                          void saveItemField(id, on, "gift", v, editBaseline, item).then((ok) => {
-                            if (ok) cancelEdit();
-                          });
+                          setDraft(e.target.value);
+                          void quickSaveItem(id, on, "gift", e.target.value);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
@@ -1225,11 +1248,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full min-w-[6rem] rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          setDraft(v);
-                          void saveItemField(id, on, "photo_sent", v, editBaseline, item).then((ok) => {
-                            if (ok) cancelEdit();
-                          });
+                          setDraft(e.target.value);
+                          void quickSaveItem(id, on, "photo_sent", e.target.value);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
@@ -1324,11 +1344,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full min-w-[5rem] rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => {
-                          const v = e.target.value;
-                          setDraft(v);
-                          void saveItemField(id, on, "product_type", v, editBaseline, item).then((ok) => {
-                            if (ok) cancelEdit();
-                          });
+                          setDraft(e.target.value);
+                          void quickSaveItem(id, on, "product_type", e.target.value === "" ? null : e.target.value);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
