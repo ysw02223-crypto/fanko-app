@@ -630,7 +630,7 @@ export function OrderCreateForm() {
           <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
             <table
               className="min-w-[820px] border-collapse text-left text-sm"
-              style={{ width: "100%", tableLayout: "fixed" }}
+              style={{ width: "100%" }}
             >
               <colgroup>
                 <col style={wPx(COL_W.category)} />
