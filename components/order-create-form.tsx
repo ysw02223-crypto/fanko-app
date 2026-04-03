@@ -129,7 +129,7 @@ function linesToInsertRows(lines: LineRow[], orderNum: string) {
 const COL_W = {
   category: 120,
   option: 200,
-  setType: 90,
+  setType: 110,
   qty: 64,
   price: 100,
   prepay: 100,
@@ -221,7 +221,8 @@ export function OrderCreateForm() {
     setLines((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
-        const option = r.product_option === "" ? (extractOption(value) ?? "") : r.product_option;
+        const extracted = extractOption(value);
+        const option = extracted !== null ? extracted : "";
         return { ...r, product_name: value, product_option: option };
       }),
     );
