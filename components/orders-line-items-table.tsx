@@ -79,6 +79,7 @@ type HistoryEntry = {
   id: string;
   at: number;
   orderNum: string;
+  field: string;
   columnLabel: string;
   oldDisplay: string;
   newDisplay: string;
@@ -494,12 +495,28 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     setFlatRows(flattenOrders(data as OrderWithNestedItems[]));
   }, [showError]);
 
+  const pushHistory = useCallback((entry: Omit<HistoryEntry, "id" | "at">) => {
+    setHistory((h) => {
+      const newEntry = { id: crypto.randomUUID(), at: Date.now(), ...entry };
+      // A→B→A: 새 값이 직전 이력의 원래 값과 같으면 직전 이력 제거 (원상복구로 간주)
+      if (
+        h.length > 0 &&
+        h[0].field === entry.field &&
+        h[0].orderNum === entry.orderNum &&
+        entry.newDisplay === h[0].oldDisplay
+      ) {
+        return h.slice(1);
+      }
+      return [newEntry, ...h].slice(0, 30);
+    });
+  }, []);
+
   /**
    * select 필드 즉시 저장 — savingRef 없이 직접 DB 업데이트 후 전체 목록 재조회.
    * progress / gift / photo_sent / product_set_type / product_type 에 사용.
    */
   const quickSaveItem = useCallback(
-    async (itemId: string, orderNum: string, field: string, value: unknown) => {
+    async (itemId: string, orderNum: string, field: string, value: unknown, prevValue: unknown) => {
       const supabase = createClient();
       const { error } = await supabase
         .from("order_items")
@@ -511,16 +528,26 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         return;
       }
       await fetchOrders();
+      pushHistory({
+        field,
+        orderNum,
+        columnLabel: (ITEM_FIELD_LABELS as Record<string, string>)[field] ?? field,
+        oldDisplay: String(prevValue ?? "—"),
+        newDisplay: String(value ?? "—"),
+        revert: async () => {
+          const supa = createClient();
+          const { error: revertErr } = await supa
+            .from("order_items")
+            .update({ [field]: prevValue })
+            .eq("id", itemId);
+          if (revertErr) showError(`되돌리기 실패: ${revertErr.message}`);
+          else await fetchOrders();
+        },
+      });
       setEditing(null);
     },
-    [showError, fetchOrders],
+    [showError, fetchOrders, pushHistory],
   );
-
-  const pushHistory = useCallback((entry: Omit<HistoryEntry, "id" | "at">) => {
-    setHistory((h) =>
-      [{ id: crypto.randomUUID(), at: Date.now(), ...entry }, ...h].slice(0, 10),
-    );
-  }, []);
 
   const runOrderRevert = useCallback(
     async (orderNum: string, payload: Record<string, unknown>) => {
@@ -674,6 +701,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         await fetchOrders();
         const revertPayload = buildOrderRevertPayload(field, oldRaw);
         pushHistory({
+          field,
           orderNum,
           columnLabel: ORDER_FIELD_LABELS[field],
           oldDisplay: displayOrderField(field, oldRaw),
@@ -717,6 +745,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         await fetchOrders();
         const revertUpdates = buildItemRevertUpdates(field, itemBefore);
         pushHistory({
+          field,
           orderNum,
           columnLabel: ITEM_FIELD_LABELS[field],
           oldDisplay: displayItemField(field, oldRaw),
@@ -769,6 +798,19 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       setUndoingId(null);
     }
   };
+
+  // Ctrl+Z: 가장 최근 변경 되돌리기
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        if (history.length > 0 && !undoingId) void onHistoryUndo(history[0]);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, undoingId]);
 
   const lineCount = filteredRows.length;
   const orderCount = new Set(filteredRows.map((r) => r.order.order_num)).size;
@@ -841,7 +883,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           <button type="button" className="h-full flex-1 cursor-default" aria-label="닫기" onClick={() => setHistoryOpen(false)} />
           <div className="flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">변경 이력 (최근 10개)</p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">변경 이력 (최근 30개)</p>
               <button
                 type="button"
                 className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -851,6 +893,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3">
+              <p className="mb-2 text-xs text-gray-400">Ctrl+Z로 마지막 변경을 되돌릴 수 있습니다</p>
               {history.length === 0 ? (
                 <p className="text-sm text-zinc-500">아직 기록된 변경이 없습니다.</p>
               ) : (
@@ -1146,7 +1189,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         value={draft}
                         onChange={(e) => {
                           setDraft(e.target.value);
-                          void quickSaveItem(id, on, "progress", e.target.value);
+                          void quickSaveItem(id, on, "progress", e.target.value, itemProgress);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
@@ -1174,7 +1217,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         value={draft}
                         onChange={(e) => {
                           setDraft(e.target.value);
-                          void quickSaveItem(id, on, "product_set_type", e.target.value);
+                          void quickSaveItem(id, on, "product_set_type", e.target.value, item.product_set_type);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
@@ -1206,7 +1249,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         value={draft}
                         onChange={(e) => {
                           setDraft(e.target.value);
-                          void quickSaveItem(id, on, "gift", e.target.value);
+                          void quickSaveItem(id, on, "gift", e.target.value, itemGift === "ask" ? "ask" : "no");
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
@@ -1233,7 +1276,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         value={draft}
                         onChange={(e) => {
                           setDraft(e.target.value);
-                          void quickSaveItem(id, on, "photo_sent", e.target.value);
+                          void quickSaveItem(id, on, "photo_sent", e.target.value, itemPhotoSent);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
@@ -1329,7 +1372,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         value={draft}
                         onChange={(e) => {
                           setDraft(e.target.value);
-                          void quickSaveItem(id, on, "product_type", e.target.value === "" ? null : e.target.value);
+                          void quickSaveItem(id, on, "product_type", e.target.value === "" ? null : e.target.value, item.product_type ?? "");
                         }}
                         onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
                       >
