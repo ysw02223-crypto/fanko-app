@@ -3,7 +3,7 @@
 import { createOrderWithItemsAction, type NewOrderLinePayload } from "@/lib/actions/orders";
 import { ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES } from "@/lib/schema";
 import { inputClass, labelClass, selectClass } from "@/lib/form-classes";
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import React, { useMemo, useState, useTransition, type FormEvent } from "react";
 
 function moscowTodayYmd(): string {
   const moscowDate = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Moscow" }));
@@ -52,10 +52,9 @@ function lineExtraRub(line: LineRow): string {
   return (p - pre).toLocaleString("ko-KR", { maximumFractionDigits: 2 });
 }
 
-// 컬럼 너비 (px)
+// 고정 컬럼 너비 (px) — 상품명은 남은 공간 전부
 const COL_W = {
   category: 110,
-  name: 280,
   option: 120,
   setType: 90,
   qty: 55,
@@ -65,8 +64,8 @@ const COL_W = {
   del: 40,
 } as const;
 
-function wPx(n: number) {
-  return { width: n, minWidth: n, maxWidth: n } as React.CSSProperties;
+function wPx(n: number): React.CSSProperties {
+  return { width: n };
 }
 
 export function OrderCreateForm() {
@@ -243,10 +242,10 @@ export function OrderCreateForm() {
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">상품</h2>
         <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <table className="border-collapse text-left text-sm" style={{ tableLayout: "fixed" }}>
+          <table className="border-collapse text-left text-sm" style={{ width: "100%", tableLayout: "fixed" }}>
             <colgroup>
               <col style={wPx(COL_W.category)} />
-              <col style={wPx(COL_W.name)} />
+              <col />{/* 상품명 — 남은 공간 전부 */}
               <col style={wPx(COL_W.option)} />
               <col style={wPx(COL_W.setType)} />
               <col style={wPx(COL_W.qty)} />
@@ -257,21 +256,21 @@ export function OrderCreateForm() {
             </colgroup>
             <thead>
               <tr>
-                <th className={th} style={wPx(COL_W.category)}>카테고리</th>
-                <th className={th} style={wPx(COL_W.name)}>상품명 *</th>
-                <th className={th} style={wPx(COL_W.option)}>옵션</th>
-                <th className={th} style={wPx(COL_W.setType)}>단품/세트</th>
-                <th className={`${th} text-right`} style={wPx(COL_W.qty)}>수량</th>
-                <th className={`${th} text-right`} style={wPx(COL_W.price)}>판매가₽ *</th>
-                <th className={`${th} text-right`} style={wPx(COL_W.prepay)}>선결제₽</th>
-                <th className={`${th} text-right`} style={wPx(COL_W.extra)}>잔금₽</th>
-                <th className={`${th} text-center`} style={wPx(COL_W.del)}>삭제</th>
+                <th className={th}>카테고리</th>
+                <th className={th}>상품명 *</th>
+                <th className={th}>옵션</th>
+                <th className={th}>단품/세트</th>
+                <th className={`${th} text-right`}>수량</th>
+                <th className={`${th} text-right`}>판매가₽ *</th>
+                <th className={`${th} text-right`}>선결제₽</th>
+                <th className={`${th} text-right`}>잔금₽</th>
+                <th className={`${th} text-center`}>삭제</th>
               </tr>
             </thead>
             <tbody>
               {lines.map((line) => (
                 <tr key={line.id}>
-                  <td className={td} style={wPx(COL_W.category)}>
+                  <td className={td}>
                     <select
                       className={`${cellSelect} w-full`}
                       value={line.product_type}
@@ -285,7 +284,7 @@ export function OrderCreateForm() {
                       ))}
                     </select>
                   </td>
-                  <td className={td} style={wPx(COL_W.name)}>
+                  <td className={td}>
                     <input
                       className={`${cellInput} w-full`}
                       value={line.product_name}
@@ -293,14 +292,14 @@ export function OrderCreateForm() {
                       placeholder="필수"
                     />
                   </td>
-                  <td className={td} style={wPx(COL_W.option)}>
+                  <td className={td}>
                     <input
                       className={`${cellInput} w-full`}
                       value={line.product_option}
                       onChange={(e) => updateLine(line.id, { product_option: e.target.value })}
                     />
                   </td>
-                  <td className={td} style={wPx(COL_W.setType)}>
+                  <td className={td}>
                     <select
                       className={`${cellSelect} w-full`}
                       value={line.product_set_type}
@@ -313,7 +312,7 @@ export function OrderCreateForm() {
                       ))}
                     </select>
                   </td>
-                  <td className={td} style={wPx(COL_W.qty)}>
+                  <td className={td}>
                     <input
                       type="number"
                       min={1}
@@ -324,7 +323,7 @@ export function OrderCreateForm() {
                       onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
                     />
                   </td>
-                  <td className={td} style={wPx(COL_W.price)}>
+                  <td className={td}>
                     <input
                       type="number"
                       step="0.01"
@@ -335,7 +334,7 @@ export function OrderCreateForm() {
                       placeholder="필수"
                     />
                   </td>
-                  <td className={td} style={wPx(COL_W.prepay)}>
+                  <td className={td}>
                     <input
                       type="number"
                       step="0.01"
@@ -345,13 +344,10 @@ export function OrderCreateForm() {
                       onChange={(e) => updateLine(line.id, { prepayment_rub: e.target.value })}
                     />
                   </td>
-                  <td
-                    className={`${td} text-right tabular-nums text-zinc-700 dark:text-zinc-300`}
-                    style={wPx(COL_W.extra)}
-                  >
+                  <td className={`${td} text-right tabular-nums text-zinc-700 dark:text-zinc-300`}>
                     {lineExtraRub(line)}
                   </td>
-                  <td className={`${td} text-center`} style={wPx(COL_W.del)}>
+                  <td className={`${td} text-center`}>
                     <button
                       type="button"
                       disabled={lines.length <= 1}
