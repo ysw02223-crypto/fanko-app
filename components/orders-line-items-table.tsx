@@ -259,6 +259,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const [undoingId, setUndoingId] = useState<string | null>(null);
 
   const tableRef = useRef<HTMLDivElement>(null);
+  const headerWrapRef = useRef<HTMLDivElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
@@ -455,6 +456,21 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("click", onClickCapture, true);
     };
+  }, []);
+
+  useEffect(() => {
+    const bodyEl = tableRef.current;
+    const headerEl = headerWrapRef.current;
+    if (!bodyEl || !headerEl) return;
+    const onScroll = () => {
+      // headerWrapRef는 overflow:hidden이라 scrollLeft 직접 설정 불가
+      // 대신 내부 table을 translate로 이동
+      const tbl = headerEl.querySelector("table") as HTMLElement | null;
+      if (tbl) tbl.style.transform = `translateX(-${bodyEl.scrollLeft}px)`;
+    };
+    onScroll();
+    bodyEl.addEventListener("scroll", onScroll);
+    return () => bodyEl.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {
@@ -1012,6 +1028,63 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       </p>
 
       <div className="w-full rounded-2xl bg-white shadow-sm outline outline-1 outline-zinc-200 dark:bg-zinc-950 dark:outline-zinc-800">
+        <div
+          ref={headerWrapRef}
+          className="sticky z-20 bg-white dark:bg-zinc-950"
+          style={{ top: 108, overflowX: "hidden" }}
+        >
+          <table
+            className="min-w-full border-collapse text-left text-sm"
+            style={{ tableLayout: "fixed", width: "100%", minWidth: 1928 }}
+          >
+            <colgroup>
+              <col style={{ width: "32px" }} />
+              <col style={{ width: "46px" }} />
+              <col style={{ width: "90px" }} />
+              <col style={{ width: "320px" }} />
+              <col style={{ width: "180px" }} />
+              <col style={{ width: "112px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "52px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "100px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "140px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "48px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "72px" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className={`${thClass} sticky left-0 z-30`}>#</th>
+                <th className={`${thClass} sticky left-[32px] z-30`}>날짜</th>
+                <th className={`${thClass} sticky left-[78px] z-30`}>주문번호</th>
+                <th className={`${thClass} sticky left-[168px] z-30 text-left`}>상품명</th>
+                <th className={`${thClass} text-left`}>옵션</th>
+                <th className={thClass}>진행</th>
+                <th className={thClass}>단품/세트</th>
+                <th className={thClass}>선물</th>
+                <th className={thClass}>사진</th>
+                <th className={thClass}>일자</th>
+                <th className={thClass}>플랫폼</th>
+                <th className={thClass}>경로</th>
+                <th className={thClass}>고객</th>
+                <th className={thClass}>거래처</th>
+                <th className={thClass}>카테고리</th>
+                <th className={thClass}>수량</th>
+                <th className={thClass}>판매가₽</th>
+                <th className={thClass}>원화매입</th>
+                <th className={thClass}>선결제₽</th>
+                <th className={`${thClass} border-r-0`}>잔금₽</th>
+              </tr>
+            </thead>
+          </table>
+        </div>
         <div ref={tableRef} style={{ overflowX: "auto", overflowY: "visible" }}>
           <table
             className="min-w-full border-collapse text-left text-sm"
@@ -1039,7 +1112,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <col style={{ width: "80px" }} />
               <col style={{ width: "72px" }} />
             </colgroup>
-            <thead className="sticky top-[108px] z-20 bg-white dark:bg-zinc-950">
+            <thead className="sr-only">
               <tr>
                 <th className={`${thClass} sticky left-0 z-30`}>#</th>
                 <th className={`${thClass} sticky left-[32px] z-30`}>날짜</th>
