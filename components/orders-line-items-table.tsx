@@ -13,7 +13,6 @@ import {
   PRODUCT_CATEGORIES,
   SET_TYPES,
   type OrderItemRow,
-  type OrderRow,
 } from "@/lib/schema";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -96,12 +95,20 @@ function progressBadgeClass(p: string) {
 
 function fmtRub(n: string | number | null | undefined) {
   const v = Number(n ?? 0);
-  return v.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+  if (!v || !Number.isFinite(v)) return "—";
+  return `${v.toLocaleString("ko-KR", { maximumFractionDigits: 2 })} ₽`;
 }
 
 function fmtKrw(n: string | number | null | undefined) {
   if (n === null || n === undefined || n === "") return "—";
-  return Number(n).toLocaleString("ko-KR", { maximumFractionDigits: 0 });
+  const v = Number(n);
+  if (!v || !Number.isFinite(v)) return "—";
+  return `${v.toLocaleString("ko-KR", { maximumFractionDigits: 0 })} ₩`;
+}
+
+function displayName(name: string, option: string | null | undefined): string {
+  if (!option) return name;
+  return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
 function computedExtra(item: OrderItemRow | null) {
@@ -126,9 +133,11 @@ function displayItemField(field: ItemEditableField, raw: string): string {
 }
 
 const thClass =
-  "whitespace-nowrap border-b border-zinc-200 bg-zinc-50 px-2 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400";
-const tdBase = "border-b border-zinc-200/80 px-2 py-1.5 align-middle text-sm dark:border-zinc-700/80";
+  "whitespace-nowrap border-b border-zinc-200 bg-zinc-50 px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400";
+const tdBase = "border-b border-zinc-200/80 px-2 py-1.5 align-middle text-center text-sm dark:border-zinc-700/80";
 const cellBtn =
+  "w-full cursor-pointer rounded px-1 py-0.5 text-center transition hover:bg-black/5 dark:hover:bg-white/10";
+const cellBtnLeft =
   "w-full cursor-pointer rounded px-1 py-0.5 text-left transition hover:bg-black/5 dark:hover:bg-white/10";
 const editingBg = "bg-sky-100 dark:bg-sky-950/50";
 
@@ -677,26 +686,26 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
       >
         <table className="w-max min-w-full border-collapse text-left text-sm">
-          <thead className="text-left">
+          <thead>
             <tr>
               <th className={`${thClass} min-w-[120px]`}>주문번호</th>
+              <th className={`${thClass} min-w-[300px] text-left`}>상품명</th>
+              <th className={`${thClass} min-w-[180px] text-left`}>옵션</th>
+              <th className={`${thClass} min-w-[112px]`}>진행</th>
+              <th className={`${thClass} min-w-[72px]`}>단품/세트</th>
+              <th className={`${thClass} min-w-[52px]`}>선물</th>
+              <th className={`${thClass} min-w-[88px]`}>사진</th>
               <th className={`${thClass} min-w-[100px]`}>일자</th>
               <th className={`${thClass} min-w-[72px]`}>플랫폼</th>
               <th className={`${thClass} min-w-[72px]`}>경로</th>
-              <th className={`${thClass} min-w-[112px]`}>진행</th>
               <th className={`${thClass} min-w-[100px]`}>고객</th>
-              <th className={`${thClass} min-w-[52px]`}>선물</th>
               <th className={`${thClass} min-w-[88px]`}>거래처</th>
               <th className={`${thClass} min-w-[88px]`}>카테고리</th>
-              <th className={`${thClass} min-w-[48px] text-right`}>수량</th>
-              <th className={`${thClass} min-w-[160px]`}>상품명</th>
-              <th className={`${thClass} min-w-[120px]`}>옵션</th>
-              <th className={`${thClass} min-w-[72px]`}>단품/세트</th>
-              <th className={`${thClass} min-w-[88px]`}>사진</th>
-              <th className={`${thClass} min-w-[88px] text-right`}>판매가₽</th>
-              <th className={`${thClass} min-w-[88px] text-right`}>원화매입</th>
-              <th className={`${thClass} min-w-[80px] text-right`}>선결제₽</th>
-              <th className={`${thClass} min-w-[72px] text-right`}>잔금₽</th>
+              <th className={`${thClass} min-w-[48px]`}>수량</th>
+              <th className={`${thClass} min-w-[88px]`}>판매가₽</th>
+              <th className={`${thClass} min-w-[88px]`}>원화매입</th>
+              <th className={`${thClass} min-w-[80px]`}>선결제₽</th>
+              <th className={`${thClass} min-w-[72px]`}>잔금₽</th>
             </tr>
           </thead>
           <tbody>
@@ -709,6 +718,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
               return (
                 <tr key={rowKey} className={g}>
+                  {/* 주문번호 */}
                   <td className={`${tdBase} font-mono font-medium ${g}`}>
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
@@ -717,10 +727,68 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                       {on}
                     </Link>
                   </td>
-                  <td className={`${tdBase} whitespace-nowrap ${g}`}>{order.date?.slice(0, 10)}</td>
-                  <td className={`${tdBase} ${g}`}>{order.platform}</td>
-                  <td className={`${tdBase} ${g}`}>{order.order_type}</td>
 
+                  {/* 상품명 */}
+                  <td
+                    className={`${tdBase} text-left ${isEditingItem(id, "product_name") ? editingBg : ""} ${g}`}
+                    title={item.product_name}
+                  >
+                    {isEditingItem(id, "product_name") ? (
+                      <input
+                        ref={inputRef}
+                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={() => void finishItemField(id, "product_name", item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtnLeft}
+                        style={{ fontSize: "12px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}
+                        onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_name" }, item.product_name)}
+                      >
+                        {displayName(item.product_name, item.product_option)}
+                      </button>
+                    )}
+                  </td>
+
+                  {/* 옵션 */}
+                  <td
+                    className={`${tdBase} text-left ${isEditingItem(id, "product_option") ? editingBg : ""} ${g}`}
+                    title={item.product_option ?? ""}
+                  >
+                    {isEditingItem(id, "product_option") ? (
+                      <input
+                        ref={inputRef}
+                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={() => void finishItemField(id, "product_option", item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtnLeft}
+                        style={{ fontSize: "12px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}
+                        onClick={() =>
+                          startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_option" }, item.product_option ?? "")
+                        }
+                      >
+                        {item.product_option ?? "—"}
+                      </button>
+                    )}
+                  </td>
+
+                  {/* 진행 */}
                   <td className={`${tdBase} ${isEditingOrder(rowKey, "progress") ? editingBg : ""} ${g}`}>
                     {isEditingOrder(rowKey, "progress") ? (
                       <select
@@ -757,33 +825,42 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  <td className={`${tdBase} max-w-[120px] ${isEditingOrder(rowKey, "customer_name") ? editingBg : ""} ${g}`}>
-                    {isEditingOrder(rowKey, "customer_name") ? (
-                      <input
-                        ref={inputRef}
+                  {/* 단품/세트 */}
+                  <td className={`${tdBase} ${isEditingItem(id, "product_set_type") ? editingBg : ""} ${g}`}>
+                    {isEditingItem(id, "product_set_type") ? (
+                      <select
+                        ref={selectRef}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishOrderField(rowKey, on, "customer_name")}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                          if (e.key === "Escape") cancelEdit();
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDraft(v);
+                          void saveItemField(id, on, "product_set_type", v, editBaseline, item).then((ok) => {
+                            if (ok) cancelEdit();
+                          });
                         }}
-                      />
+                        onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                      >
+                        {SET_TYPES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <button
                         type="button"
-                        className={`${cellBtn} truncate`}
-                        title={order.customer_name ?? ""}
+                        className={cellBtn}
                         onClick={() =>
-                          startEdit({ kind: "order", rowKey, orderNum: on, field: "customer_name" }, order.customer_name ?? "")
+                          startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_set_type" }, item.product_set_type)
                         }
                       >
-                        {order.customer_name ?? "—"}
+                        {item.product_set_type}
                       </button>
                     )}
                   </td>
 
+                  {/* 선물 */}
                   <td className={`${tdBase} ${isEditingOrder(rowKey, "gift") ? editingBg : ""} ${g}`}>
                     {isEditingOrder(rowKey, "gift") ? (
                       <select
@@ -815,7 +892,78 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  <td className={`${tdBase} max-w-[100px] ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : ""} ${g}`}>
+                  {/* 사진 */}
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "photo_sent") ? editingBg : ""} ${g}`}>
+                    {isEditingOrder(rowKey, "photo_sent") ? (
+                      <select
+                        ref={selectRef}
+                        className="w-full min-w-[6rem] rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDraft(v);
+                          void saveOrderField(on, "photo_sent", v, editBaseline).then((ok) => {
+                            if (ok) cancelEdit();
+                          });
+                        }}
+                        onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                      >
+                        {PHOTO_STATUS.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtn}
+                        onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "photo_sent" }, order.photo_sent)}
+                      >
+                        {order.photo_sent}
+                      </button>
+                    )}
+                  </td>
+
+                  {/* 일자 */}
+                  <td className={`${tdBase} whitespace-nowrap ${g}`}>{order.date?.slice(0, 10)}</td>
+
+                  {/* 플랫폼 */}
+                  <td className={`${tdBase} ${g}`}>{order.platform}</td>
+
+                  {/* 경로 */}
+                  <td className={`${tdBase} ${g}`}>{order.order_type}</td>
+
+                  {/* 고객 */}
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "customer_name") ? editingBg : ""} ${g}`}>
+                    {isEditingOrder(rowKey, "customer_name") ? (
+                      <input
+                        ref={inputRef}
+                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={() => void finishOrderField(rowKey, on, "customer_name")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${cellBtn} truncate`}
+                        title={order.customer_name ?? ""}
+                        onClick={() =>
+                          startEdit({ kind: "order", rowKey, orderNum: on, field: "customer_name" }, order.customer_name ?? "")
+                        }
+                      >
+                        {order.customer_name ?? "—"}
+                      </button>
+                    )}
+                  </td>
+
+                  {/* 거래처 */}
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : ""} ${g}`}>
                     {isEditingOrder(rowKey, "purchase_channel") ? (
                       <input
                         ref={inputRef}
@@ -845,6 +993,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
+                  {/* 카테고리 */}
                   <td className={`${tdBase} ${isEditingItem(id, "product_type") ? editingBg : ""} ${g}`}>
                     {isEditingItem(id, "product_type") ? (
                       <select
@@ -880,13 +1029,14 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  <td className={`${tdBase} text-right tabular-nums ${isEditingItem(id, "quantity") ? editingBg : ""} ${g}`}>
+                  {/* 수량 */}
+                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "quantity") ? editingBg : ""} ${g}`}>
                     {isEditingItem(id, "quantity") ? (
                       <input
                         ref={inputRef}
                         type="number"
                         min={1}
-                        className="w-14 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        className="w-14 rounded border border-sky-400 bg-white px-1 py-0.5 text-center text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                         onBlur={() => void finishItemField(id, "quantity", item)}
@@ -898,7 +1048,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     ) : (
                       <button
                         type="button"
-                        className={`${cellBtn} text-right`}
+                        className={cellBtn}
                         onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "quantity" }, String(item.quantity))}
                       >
                         {item.quantity}
@@ -906,25 +1056,93 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  <LineItemCells
-                    item={item}
-                    orderNum={on}
-                    rowKey={rowKey}
-                    groupClass={g}
-                    draft={draft}
-                    editBaseline={editBaseline}
-                    setDraft={setDraft}
-                    startEdit={startEdit}
-                    cancelEdit={cancelEdit}
-                    finishItemField={finishItemField}
-                    saveOrderField={saveOrderField}
-                    saveItemField={saveItemField}
-                    isEditingOrder={isEditingOrder}
-                    isEditingItem={isEditingItem}
-                    order={order}
-                    inputRef={inputRef}
-                    selectRef={selectRef}
-                  />
+                  {/* 판매가₽ */}
+                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "price_rub") ? editingBg : ""} ${g}`}>
+                    {isEditingItem(id, "price_rub") ? (
+                      <input
+                        ref={inputRef}
+                        type="number"
+                        step="0.01"
+                        className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={() => void finishItemField(id, "price_rub", item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtn}
+                        onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "price_rub" }, String(item.price_rub))}
+                      >
+                        {fmtRub(item.price_rub)}
+                      </button>
+                    )}
+                  </td>
+
+                  {/* 원화매입 */}
+                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "krw") ? editingBg : ""} ${g}`}>
+                    {isEditingItem(id, "krw") ? (
+                      <input
+                        ref={inputRef}
+                        type="number"
+                        step={1}
+                        className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={() => void finishItemField(id, "krw", item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtn}
+                        onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "krw" }, item.krw != null ? String(item.krw) : "")}
+                      >
+                        {fmtKrw(item.krw)}
+                      </button>
+                    )}
+                  </td>
+
+                  {/* 선결제₽ */}
+                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "prepayment_rub") ? editingBg : ""} ${g}`}>
+                    {isEditingItem(id, "prepayment_rub") ? (
+                      <input
+                        ref={inputRef}
+                        type="number"
+                        step="0.01"
+                        className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={() => void finishItemField(id, "prepayment_rub", item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtn}
+                        onClick={() =>
+                          startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "prepayment_rub" }, String(item.prepayment_rub))
+                        }
+                      >
+                        {fmtRub(item.prepayment_rub)}
+                      </button>
+                    )}
+                  </td>
+
+                  {/* 잔금₽ */}
+                  <td className={`${tdBase} tabular-nums text-zinc-700 dark:text-zinc-300 ${g}`}>
+                    {fmtRub(computedExtra(item))}
+                  </td>
                 </tr>
               );
             })}
@@ -935,253 +1153,3 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   );
 }
 
-function LineItemCells({
-  item,
-  orderNum,
-  rowKey,
-  groupClass,
-  draft,
-  editBaseline,
-  setDraft,
-  startEdit,
-  cancelEdit,
-  finishItemField,
-  saveOrderField,
-  saveItemField,
-  isEditingOrder,
-  isEditingItem,
-  order,
-  inputRef,
-  selectRef,
-}: {
-  item: OrderItemRow;
-  orderNum: string;
-  rowKey: string;
-  groupClass: string;
-  draft: string;
-  editBaseline: string;
-  setDraft: (s: string) => void;
-  startEdit: (t: EditTarget, cur: string) => void;
-  cancelEdit: () => void;
-  finishItemField: (itemId: string, field: ItemEditableField, item: OrderItemRow) => Promise<void>;
-  saveOrderField: (orderNum: string, field: OrderEditableField, newRaw: string, oldRaw: string) => Promise<boolean>;
-  saveItemField: (
-    itemId: string,
-    orderNum: string,
-    field: ItemEditableField,
-    newRaw: string,
-    oldRaw: string,
-    itemBefore: OrderItemRow,
-  ) => Promise<boolean>;
-  isEditingOrder: (rowKey: string, field: OrderEditableField) => boolean;
-  isEditingItem: (itemId: string, field: ItemEditableField) => boolean;
-  order: OrderRow;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  selectRef: React.RefObject<HTMLSelectElement | null>;
-}) {
-  const id = item.id;
-  const on = orderNum;
-  const td = `${tdBase} ${groupClass}`;
-
-  return (
-    <>
-      <td className={`${td} max-w-[200px] ${isEditingItem(id, "product_name") ? editingBg : ""}`}>
-        {isEditingItem(id, "product_name") ? (
-          <input
-            ref={inputRef}
-            className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void finishItemField(id, "product_name", item)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") cancelEdit();
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className={`${cellBtn} line-clamp-2`}
-            onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_name" }, item.product_name)}
-          >
-            {item.product_name}
-          </button>
-        )}
-      </td>
-
-      <td className={`${td} max-w-[140px] ${isEditingItem(id, "product_option") ? editingBg : ""}`}>
-        {isEditingItem(id, "product_option") ? (
-          <input
-            ref={inputRef}
-            className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void finishItemField(id, "product_option", item)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") cancelEdit();
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className={`${cellBtn} truncate`}
-            onClick={() =>
-              startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_option" }, item.product_option ?? "")
-            }
-          >
-            {item.product_option ?? "—"}
-          </button>
-        )}
-      </td>
-
-      <td className={`${td} ${isEditingItem(id, "product_set_type") ? editingBg : ""}`}>
-        {isEditingItem(id, "product_set_type") ? (
-          <select
-            ref={selectRef}
-            className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
-            value={draft}
-            onChange={(e) => {
-              const v = e.target.value;
-              setDraft(v);
-              void saveItemField(id, on, "product_set_type", v, editBaseline, item).then((ok) => {
-                if (ok) cancelEdit();
-              });
-            }}
-            onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
-          >
-            {SET_TYPES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <button
-            type="button"
-            className={cellBtn}
-            onClick={() =>
-              startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_set_type" }, item.product_set_type)
-            }
-          >
-            {item.product_set_type}
-          </button>
-        )}
-      </td>
-
-      <td className={`${td} ${isEditingOrder(rowKey, "photo_sent") ? editingBg : ""}`}>
-        {isEditingOrder(rowKey, "photo_sent") ? (
-          <select
-            ref={selectRef}
-            className="w-full min-w-[6rem] rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
-            value={draft}
-            onChange={(e) => {
-              const v = e.target.value;
-              setDraft(v);
-              void saveOrderField(on, "photo_sent", v, editBaseline).then((ok) => {
-                if (ok) cancelEdit();
-              });
-            }}
-            onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
-          >
-            {PHOTO_STATUS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <button
-            type="button"
-            className={`${cellBtn} truncate`}
-            onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "photo_sent" }, order.photo_sent)}
-          >
-            {order.photo_sent}
-          </button>
-        )}
-      </td>
-
-      <td className={`${td} text-right tabular-nums ${isEditingItem(id, "price_rub") ? editingBg : ""}`}>
-        {isEditingItem(id, "price_rub") ? (
-          <input
-            ref={inputRef}
-            type="number"
-            step="0.01"
-            className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void finishItemField(id, "price_rub", item)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") cancelEdit();
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className={`${cellBtn} text-right`}
-            onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "price_rub" }, String(item.price_rub))}
-          >
-            {fmtRub(item.price_rub)}
-          </button>
-        )}
-      </td>
-
-      <td className={`${td} text-right tabular-nums ${isEditingItem(id, "krw") ? editingBg : ""}`}>
-        {isEditingItem(id, "krw") ? (
-          <input
-            ref={inputRef}
-            type="number"
-            step={1}
-            className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void finishItemField(id, "krw", item)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") cancelEdit();
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className={`${cellBtn} text-right`}
-            onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "krw" }, item.krw != null ? String(item.krw) : "")}
-          >
-            {fmtKrw(item.krw)}
-          </button>
-        )}
-      </td>
-
-      <td className={`${td} text-right tabular-nums ${isEditingItem(id, "prepayment_rub") ? editingBg : ""}`}>
-        {isEditingItem(id, "prepayment_rub") ? (
-          <input
-            ref={inputRef}
-            type="number"
-            step="0.01"
-            className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void finishItemField(id, "prepayment_rub", item)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") cancelEdit();
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className={`${cellBtn} text-right`}
-            onClick={() =>
-              startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "prepayment_rub" }, String(item.prepayment_rub))
-            }
-          >
-            {fmtRub(item.prepayment_rub)}
-          </button>
-        )}
-      </td>
-
-      <td className={`${td} text-right tabular-nums text-zinc-700 dark:text-zinc-300`}>{fmtRub(computedExtra(item))}</td>
-    </>
-  );
-}
