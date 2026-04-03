@@ -971,6 +971,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       <div
         ref={tableRef}
         className="w-full overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+        style={{ overflowY: "visible" }}
       >
         <table className="min-w-full border-collapse text-left text-sm">
           <colgroup>
