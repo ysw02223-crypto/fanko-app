@@ -127,14 +127,14 @@ function linesToInsertRows(lines: LineRow[], orderNum: string) {
 // ── column widths ──────────────────────────────────────────────────────────────
 
 const COL_W = {
-  category: 110,
-  option: 120,
-  setType: 90,
-  qty: 55,
-  price: 110,
-  prepay: 110,
-  extra: 110,
-  del: 40,
+  category: 120,
+  option: 200,
+  setType: 80,
+  qty: 50,
+  price: 100,
+  prepay: 100,
+  extra: 90,
+  del: 36,
 } as const;
 
 function wPx(n: number): React.CSSProperties {
@@ -379,6 +379,9 @@ export function OrderCreateForm() {
   const td = "border-b border-zinc-200/80 px-2 py-1.5 align-middle dark:border-zinc-700/80";
   const cellInput = `${inputClass} !py-1.5 text-sm`;
   const cellSelect = `${selectClass} !py-1.5 text-sm`;
+  const compactInput =
+    "w-full rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm outline-none ring-emerald-500/40 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100";
+  const compactSelect = compactInput;
 
   // ── render ───────────────────────────────────────────────────────────────────
 
@@ -511,8 +514,10 @@ export function OrderCreateForm() {
           )}
         </div>
 
-        {/* ── 상단 주문 정보 2열 그리드 ── */}
-        <div className="grid gap-4 sm:grid-cols-2">
+        {/* ── 상단 주문 정보 3열 그리드 ── */}
+        <div className="grid grid-cols-3 gap-x-4 gap-y-3">
+          {/* 1행: 주문번호 | 주문일 | 고객명 */}
+
           {/* 주문번호 */}
           <div className="flex flex-col gap-1">
             <label htmlFor="order_num" className={labelClass}>
@@ -523,63 +528,18 @@ export function OrderCreateForm() {
               name="order_num"
               required={!editMode}
               disabled={editMode}
-              className={`${inputClass} ${editMode ? "opacity-60" : ""}`}
+              className={`${compactInput} ${editMode ? "opacity-60" : ""}`}
               placeholder="예: 0212345"
               autoComplete="off"
               value={orderNum}
               onChange={(e) => handleOrderNumChange(e.target.value)}
             />
-            <span className="text-xs text-zinc-500">
-              플랫폼: <span className="font-medium text-zinc-700 dark:text-zinc-300">{platform}</span>
-              {"  "}(01=avito · 02=telegram · 03=vk)
+            <span className="text-xs text-gray-400">
+              {platform}{"  "}(01=avito · 02=telegram · 03=vk)
             </span>
           </div>
 
-          {/* 주문 경로 */}
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>주문 경로 *</span>
-            <select
-              name="order_type"
-              required
-              className={selectClass}
-              value={orderType}
-              onChange={(e) => setOrderType(e.target.value)}
-            >
-              {ORDER_ROUTES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {/* 고객명 */}
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>고객명</span>
-            <input
-              name="customer_name"
-              className={inputClass}
-              autoComplete="off"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-            />
-          </label>
-
-          {/* 선물 여부 */}
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>선물 여부</span>
-            <select
-              name="gift"
-              className={selectClass}
-              value={gift}
-              onChange={(e) => setGift(e.target.value)}
-            >
-              <option value="no">no</option>
-              <option value="ask">ask</option>
-            </select>
-          </label>
-
-          {/* 주문일 + 진행상태 — 2열 */}
+          {/* 주문일 */}
           <div className="flex flex-col gap-1">
             <label htmlFor="date" className={labelClass}>
               주문일 *
@@ -589,30 +549,75 @@ export function OrderCreateForm() {
               name="date"
               type="date"
               required
-              className={inputClass}
+              className={compactInput}
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
-            <span className="text-xs text-zinc-500">기본값: 모스크바 기준 오늘 날짜 (필요 시 변경 가능)</span>
           </div>
 
+          {/* 고객명 */}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="customer_name" className={labelClass}>고객명</label>
+            <input
+              id="customer_name"
+              name="customer_name"
+              className={compactInput}
+              autoComplete="off"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+            />
+          </div>
+
+          {/* 2행: 진행상태 | 선물여부 | 주문경로 */}
+
           {/* 진행상태 */}
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>진행상태 *</span>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="progress" className={labelClass}>진행상태 *</label>
             <select
+              id="progress"
               name="progress"
               required
-              className={selectClass}
+              className={compactSelect}
               value={progress}
               onChange={(e) => setProgress(e.target.value)}
             >
               {ORDER_PROGRESS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
+                <option key={p} value={p}>{p}</option>
               ))}
             </select>
-          </label>
+          </div>
+
+          {/* 선물 여부 */}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="gift" className={labelClass}>선물 여부</label>
+            <select
+              id="gift"
+              name="gift"
+              className={compactSelect}
+              value={gift}
+              onChange={(e) => setGift(e.target.value)}
+            >
+              <option value="no">no</option>
+              <option value="ask">ask</option>
+            </select>
+          </div>
+
+          {/* 주문 경로 */}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="order_type" className={labelClass}>주문 경로 *</label>
+            <select
+              id="order_type"
+              name="order_type"
+              required
+              className={compactSelect}
+              value={orderType}
+              onChange={(e) => setOrderType(e.target.value)}
+            >
+              {ORDER_ROUTES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* ── 상품 테이블 ── */}
@@ -695,6 +700,7 @@ export function OrderCreateForm() {
                         min={1}
                         max={9}
                         maxLength={1}
+                        placeholder="1"
                         className={`${cellInput} w-full text-right tabular-nums`}
                         value={line.quantity}
                         onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
