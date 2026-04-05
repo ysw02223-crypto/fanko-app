@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type { OrderForShipping } from "@/lib/actions/shipping";
+import { toggleDownloadedAction } from "@/lib/actions/shipping";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -33,8 +34,10 @@ type HistoryEntry = {
   revert: () => Promise<void>;
 };
 
+type ShippingOrder = OrderForShipping & { progress?: string };
+
 export type ShippingTableProps = {
-  initialOrders: OrderForShipping[];
+  initialOrders: ShippingOrder[];
 };
 
 // ── 상수 ────────────────────────────────────────────────────────────────────────
@@ -69,6 +72,7 @@ const W = {
   order_num: 80,
   date: 64,
   product_names: 280,
+  downloaded: 48,
   recipient_name: 180,
   recipient_phone: 90,
   recipient_email: 180,
@@ -80,7 +84,7 @@ const W = {
 } as const;
 
 const TOTAL_MIN_WIDTH =
-  W.num + W.order_num + W.date + W.product_names +
+  W.num + W.order_num + W.date + W.product_names + W.downloaded +
   W.recipient_name + W.recipient_phone + W.recipient_email + W.zip_code +
   W.region + W.city + W.address + W.customs_number;
 
@@ -97,14 +101,14 @@ const editingBg = "bg-sky-100 dark:bg-sky-950/50";
 // ── 헬퍼 ────────────────────────────────────────────────────────────────────────
 
 const SHIPPING_SELECT =
-  "order_num, recipient_name, recipient_phone, recipient_email, zip_code, region, city, address, customs_number";
+  "order_num, recipient_name, recipient_phone, recipient_email, zip_code, region, city, address, customs_number, downloaded";
 
-async function fetchShippingOrders(): Promise<OrderForShipping[]> {
+async function fetchShippingOrders(): Promise<ShippingOrder[]> {
   const supabase = createClient();
   const [ordersRes, itemsRes, shippingRes] = await Promise.all([
     supabase
       .from("orders")
-      .select("order_num, date, customer_name")
+      .select("order_num, date, customer_name, progress")
       .order("date", { ascending: false }),
     supabase.from("order_items").select("order_num, product_name"),
     supabase.from("shipping_info").select(SHIPPING_SELECT),
@@ -130,12 +134,13 @@ async function fetchShippingOrders(): Promise<OrderForShipping[]> {
     order_num: o.order_num,
     date: o.date,
     customer_name: o.customer_name,
+    progress: o.progress,
     product_names: (itemsByOrder.get(o.order_num) ?? []).join("\n"),
     shipping: shippingByOrder.get(o.order_num) ?? null,
   }));
 }
 
-function isComplete(order: OrderForShipping): boolean {
+function isComplete(order: ShippingOrder): boolean {
   return Boolean(order.shipping?.recipient_name?.trim());
 }
 
@@ -153,7 +158,7 @@ function formatDate(dateStr: string): string {
 // ── 메인 컴포넌트 ───────────────────────────────────────────────────────────────
 
 export function ShippingTable({ initialOrders }: ShippingTableProps) {
-  const [orders, setOrders] = useState<OrderForShipping[]>(initialOrders);
+  const [orders, setOrders] = useState<ShippingOrder[]>(initialOrders);
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [focusedCell, setFocusedCell] = useState<EditTarget | null>(null);
   const [draft, setDraft] = useState("");
@@ -448,6 +453,33 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     [orders, showError, refetchOrders, pushHistory],
   );
 
+  // ── 다운로드 토글 ────────────────────────────────────────────────────────────
+
+  const handleDownloadToggle = useCallback(async (orderNum: string, downloaded: boolean) => {
+    // 낙관적 업데이트
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.order_num === orderNum
+          ? { ...o, shipping: o.shipping ? { ...o.shipping, downloaded } : { order_num: orderNum, recipient_name: null, recipient_phone: null, recipient_email: null, zip_code: null, region: null, city: null, address: null, customs_number: null, downloaded } }
+          : o
+      )
+    );
+    const result = await toggleDownloadedAction(orderNum, downloaded);
+    if (result?.error) {
+      setToast(result.error);
+      // 롤백
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.order_num === orderNum
+            ? { ...o, shipping: o.shipping ? { ...o.shipping, downloaded: !downloaded } : null }
+            : o
+        )
+      );
+    } else if (result?.ok) {
+      setToast(result.ok);
+    }
+  }, []);
+
   // ── 편집 헬퍼 ───────────────────────────────────────────────────────────────
 
   const startEdit = (orderNum: string, field: ShippingEditableField, current: string) => {
@@ -500,7 +532,10 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
 
   const filteredOrders = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const isSearching = q.length > 0;
     return orders.filter((o) => {
+      // 검색 중이 아닐 때만 DONE 숨김
+      if (!isSearching && o.progress === "DONE") return false;
       if (statusFilter === "done" && !isComplete(o)) return false;
       if (statusFilter === "todo" && isComplete(o)) return false;
       if (q) {
@@ -717,6 +752,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
               <col style={{ width: W.order_num }} />
               <col style={{ width: W.date }} />
               <col style={{ width: W.product_names }} />
+              <col style={{ width: W.downloaded, minWidth: W.downloaded }} />
               <col style={{ width: W.recipient_name }} />
               <col style={{ width: W.recipient_phone }} />
               <col style={{ width: W.recipient_email }} />
@@ -732,6 +768,9 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                 <th className={thClass}>주문번호</th>
                 <th className={thClass}>주문일자</th>
                 <th className={`${thClass} text-left`}>상품명</th>
+                <th style={{ width: W.downloaded, minWidth: W.downloaded }} className={thClass}>
+                  다운
+                </th>
                 <th className={thClass}>수취인명</th>
                 <th className={thClass}>연락처</th>
                 <th className={thClass}>이메일</th>
@@ -799,6 +838,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                 <col style={{ width: W.order_num }} />
                 <col style={{ width: W.date }} />
                 <col style={{ width: W.product_names }} />
+                <col style={{ width: W.downloaded, minWidth: W.downloaded }} />
                 <col style={{ width: W.recipient_name }} />
                 <col style={{ width: W.recipient_phone }} />
                 <col style={{ width: W.recipient_email }} />
@@ -811,7 +851,10 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
               <tbody>
                 {filteredOrders.map((order, idx) => {
                   const done = isComplete(order);
-                  const rowBg = done
+                  const downloaded = order.shipping?.downloaded ?? false;
+                  const rowBg = downloaded
+                    ? "bg-blue-50 dark:bg-blue-950/20"
+                    : done
                     ? "bg-emerald-50 dark:bg-emerald-950/20"
                     : "bg-white dark:bg-zinc-950";
                   const s = order.shipping;
@@ -840,6 +883,16 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                             <div key={i} className="truncate">{name}</div>
                           ))}
                         </div>
+                      </td>
+
+                      {/* 다운 체크박스 */}
+                      <td className={`${tdBase} text-center`} style={{ width: W.downloaded }}>
+                        <input
+                          type="checkbox"
+                          checked={order.shipping?.downloaded ?? false}
+                          onChange={(e) => handleDownloadToggle(order.order_num, e.target.checked)}
+                          className="h-4 w-4 cursor-pointer accent-blue-600"
+                        />
                       </td>
 
                       {/* 편집 가능 셀들 */}

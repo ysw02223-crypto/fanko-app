@@ -28,6 +28,12 @@ export function CrmShell({ email, children }: { email: string; children: React.R
             >
               배송 관리
             </Link>
+            <Link
+              href="/history"
+              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              변경 이력
+            </Link>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
             <span className="hidden max-w-[200px] truncate sm:inline">{email}</span>

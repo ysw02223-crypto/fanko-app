@@ -304,7 +304,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const isFiltered = q !== "" || Object.values(filters).some(Boolean);
     return displayRows.filter((row) => {
+      // 검색어/필터가 없을 때 DONE·CANCEL 기본 숨김
+      if (!isFiltered) {
+        const rowProgressRaw = row.item.progress ?? row.order.progress ?? "";
+        if (rowProgressRaw === "DONE" || rowProgressRaw === "CANCEL") return false;
+      }
       if (filters.platform && row.order.platform !== filters.platform) return false;
       const rowProgress = row.item.progress ?? row.order.progress ?? "";
       if (filters.progress && rowProgress !== filters.progress) return false;
@@ -800,6 +806,34 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           return false;
         }
         await fetchOrders();
+
+        // krw 저장 성공 후 PAY → BUY IN KOREA 자동 트리거
+        if (field === "krw" && newRaw.trim() !== "") {
+          const { data: orderData } = await supabase
+            .from("orders")
+            .select("progress")
+            .eq("order_num", orderNum)
+            .maybeSingle();
+
+          if (orderData?.progress === "PAY") {
+            await supabase
+              .from("orders")
+              .update({ progress: "BUY IN KOREA" })
+              .eq("order_num", orderNum);
+
+            await supabase.from("order_history").insert({
+              order_num: orderNum,
+              field: "progress",
+              old_value: "PAY",
+              new_value: "BUY IN KOREA",
+              changed_by: "자동변경",
+            });
+
+            // 상태 변경 반영을 위해 목록 재조회
+            await fetchOrders();
+          }
+        }
+
         const revertUpdates = buildItemRevertUpdates(field, itemBefore);
         pushHistory({
           field,
