@@ -21,6 +21,7 @@ export type ShippingInfoRow = {
 export type OrderForShipping = {
   order_num: string;
   date: string;
+  progress: string | null;
   product_names: string;
   shipping: ShippingInfoRow | null;
 };
@@ -52,7 +53,7 @@ export async function getOrdersForShipping(): Promise<OrderForShipping[]> {
   const [ordersResult, itemsResult, shippingResult] = await Promise.all([
     supabase
       .from("orders")
-      .select("order_num, date")
+      .select("order_num, date, progress")
       .order("date", { ascending: false }),
     supabase
       .from("order_items")
@@ -83,6 +84,7 @@ export async function getOrdersForShipping(): Promise<OrderForShipping[]> {
   return (ordersResult.data ?? []).map((order) => ({
     order_num: order.order_num,
     date: order.date,
+    progress: order.progress ?? null,
     product_names: (itemsByOrder.get(order.order_num) ?? []).join("\n"),
     shipping: shippingByOrder.get(order.order_num) ?? null,
   }));
@@ -138,7 +140,7 @@ export async function getShippingExportRows(): Promise<ShippingExportRow[]> {
       ),
     supabase
       .from("orders")
-      .select("order_num, date"),
+      .select("order_num, date, progress"),
     supabase
       .from("shipping_info")
       .select(
@@ -150,9 +152,9 @@ export async function getShippingExportRows(): Promise<ShippingExportRow[]> {
   if (ordersResult.error) throw new Error(ordersResult.error.message);
   if (shippingResult.error) throw new Error(shippingResult.error.message);
 
-  const ordersByNum = new Map<string, { date: string }>();
+  const ordersByNum = new Map<string, { date: string; progress: string | null }>();
   for (const order of ordersResult.data ?? []) {
-    ordersByNum.set(order.order_num, { date: order.date });
+    ordersByNum.set(order.order_num, { date: order.date, progress: order.progress ?? null });
   }
 
   const shippingByOrder = new Map<string, ShippingInfoRow>();
@@ -160,10 +162,27 @@ export async function getShippingExportRows(): Promise<ShippingExportRow[]> {
     shippingByOrder.set(row.order_num, row as ShippingInfoRow);
   }
 
+  const isComplete = (s: ShippingInfoRow) =>
+    !!(
+      s.recipient_name?.trim() &&
+      s.recipient_phone?.trim() &&
+      s.recipient_email?.trim() &&
+      s.zip_code?.trim() &&
+      s.region?.trim() &&
+      s.city?.trim() &&
+      s.address?.trim() &&
+      s.customs_number?.trim()
+    );
+
   return (itemsResult.data ?? [])
     .filter((item) => {
       const shipping = shippingByOrder.get(item.order_num);
-      return shipping && shipping.recipient_name?.trim() && !shipping.downloaded;
+      const order = ordersByNum.get(item.order_num);
+      return (
+        shipping &&
+        isComplete(shipping) &&
+        order?.progress !== "IN DELIVERY"
+      );
     })
     .map((item) => {
       const order = ordersByNum.get(item.order_num);
@@ -198,13 +217,6 @@ export async function toggleDownloadedAction(
   const supabase = await createClient();
   const { error: authError } = await supabase.auth.getUser();
   if (authError) return { error: authError.message };
-
-  // shipping_info downloaded 업데이트
-  const { error: shippingError } = await supabase
-    .from("shipping_info")
-    .upsert({ order_num: orderNum, downloaded }, { onConflict: "order_num" });
-
-  if (shippingError) return { error: shippingError.message };
 
   // orders progress 업데이트
   const newProgress = downloaded ? "IN DELIVERY" : "PROBLEM";
@@ -247,14 +259,6 @@ export async function markShippingDownloadedAction(
   const supabase = await createClient();
   const { error: authError } = await supabase.auth.getUser();
   if (authError) return { error: authError.message };
-
-  // shipping_info downloaded = true 업데이트
-  const { error: shippingError } = await supabase
-    .from("shipping_info")
-    .update({ downloaded: true })
-    .in("order_num", orderNums);
-
-  if (shippingError) return { error: shippingError.message };
 
   // orders progress → IN DELIVERY 업데이트 + 히스토리 기록
   for (const orderNum of orderNums) {

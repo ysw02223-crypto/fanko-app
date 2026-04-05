@@ -34,7 +34,7 @@ type HistoryEntry = {
   revert: () => Promise<void>;
 };
 
-type ShippingOrder = OrderForShipping & { progress?: string };
+type ShippingOrder = OrderForShipping;
 
 export type ShippingTableProps = {
   initialOrders: ShippingOrder[];
@@ -140,8 +140,25 @@ async function fetchShippingOrders(): Promise<ShippingOrder[]> {
   }));
 }
 
+const REQUIRED_SHIPPING_FIELDS: ShippingEditableField[] = [
+  "recipient_name", "recipient_phone", "recipient_email",
+  "zip_code", "region", "city", "address", "customs_number",
+];
+
 function isComplete(order: ShippingOrder): boolean {
-  return Boolean(order.shipping?.recipient_name?.trim());
+  const s = order.shipping;
+  if (!s) return false;
+  return REQUIRED_SHIPPING_FIELDS.every((f) => !!s[f]?.trim());
+}
+
+function hasAnyData(shipping: ShippingOrder["shipping"]): boolean {
+  if (!shipping) return false;
+  return REQUIRED_SHIPPING_FIELDS.some((f) => !!shipping[f]?.trim());
+}
+
+function isMissingField(shipping: ShippingOrder["shipping"], field: ShippingEditableField): boolean {
+  if (!shipping) return false;
+  return hasAnyData(shipping) && !shipping[field]?.trim();
 }
 
 function displayVal(val: string | null | undefined): string {
@@ -171,6 +188,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "done" | "todo">("");
   const [openFilter, setOpenFilter] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
 
   const tableRef = useRef<HTMLDivElement>(null);
@@ -455,30 +473,53 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
 
   // ── 다운로드 토글 ────────────────────────────────────────────────────────────
 
-  const handleDownloadToggle = useCallback(async (orderNum: string, downloaded: boolean) => {
-    // 낙관적 업데이트
+  const handleDownloadToggle = useCallback(async (orderNum: string, checked: boolean) => {
+    // 낙관적 업데이트: progress 반영
+    const newProgress = checked ? "IN DELIVERY" : "PROBLEM";
     setOrders((prev) =>
-      prev.map((o) =>
-        o.order_num === orderNum
-          ? { ...o, shipping: o.shipping ? { ...o.shipping, downloaded } : { order_num: orderNum, recipient_name: null, recipient_phone: null, recipient_email: null, zip_code: null, region: null, city: null, address: null, customs_number: null, downloaded } }
-          : o
-      )
+      prev.map((o) => o.order_num === orderNum ? { ...o, progress: newProgress } : o)
     );
-    const result = await toggleDownloadedAction(orderNum, downloaded);
+    const result = await toggleDownloadedAction(orderNum, checked);
     if (result?.error) {
       setToast(result.error);
       // 롤백
       setOrders((prev) =>
-        prev.map((o) =>
-          o.order_num === orderNum
-            ? { ...o, shipping: o.shipping ? { ...o.shipping, downloaded: !downloaded } : null }
-            : o
-        )
+        prev.map((o) => o.order_num === orderNum ? { ...o, progress: checked ? "PROBLEM" : "IN DELIVERY" } : o)
       );
-    } else if (result?.ok) {
-      setToast(result.ok);
+    } else {
+      if (result?.ok) setToast(result.ok);
+      await refetchOrders();
     }
-  }, []);
+  }, [refetchOrders]);
+
+  // ── 엑셀 다운로드 ────────────────────────────────────────────────────────────
+
+  const handleExcelDownload = useCallback(async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const res = await fetch("/shipping/export");
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        setToast(json.error ?? "다운로드 실패");
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filename = disposition.split("filename=")[1]?.replace(/"/g, "") ?? "shipping.xlsx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      await refetchOrders();
+    } catch {
+      setToast("다운로드 중 오류가 발생했습니다.");
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [isDownloading, refetchOrders]);
 
   // ── 편집 헬퍼 ───────────────────────────────────────────────────────────────
 
@@ -697,12 +738,14 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
               )}
 
               {/* 엑셀 다운로드 */}
-              <a
-                href="/shipping/export"
-                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+              <button
+                type="button"
+                onClick={handleExcelDownload}
+                disabled={isDownloading}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
               >
-                엑셀 다운로드
-              </a>
+                {isDownloading ? "다운로드 중…" : "엑셀 다운로드"}
+              </button>
 
               {/* 검색 */}
               <input
@@ -889,7 +932,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                       <td className={`${tdBase} text-center`} style={{ width: W.downloaded }}>
                         <input
                           type="checkbox"
-                          checked={order.shipping?.downloaded ?? false}
+                          checked={order.progress === "IN DELIVERY"}
                           onChange={(e) => handleDownloadToggle(order.order_num, e.target.checked)}
                           className="h-4 w-4 cursor-pointer accent-blue-600"
                         />
@@ -902,11 +945,12 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                         const isLast = fi === EDITABLE_FIELDS.length - 1;
                         const isSmall =
                           field === "recipient_name" || field === "recipient_email";
+                        const missing = !active && isMissingField(order.shipping, field);
 
                         return (
                           <td
                             key={field}
-                            className={`${tdBase} ${active ? editingBg : ""} ${isLast ? "border-r-0" : ""}`}
+                            className={`${tdBase} ${active ? editingBg : missing ? "bg-amber-50 dark:bg-amber-950/30" : ""} ${isLast ? "border-r-0" : ""} ${missing ? "border-amber-300 dark:border-amber-700" : ""}`}
                             onClick={() => {
                               if (!active) startEdit(order.order_num, field, raw);
                             }}
