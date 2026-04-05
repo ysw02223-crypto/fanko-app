@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingIncludes: {
+    "/shipping/export": ["./public/shipter-template.xlsx"],
+  },
 };
 
 export default nextConfig;

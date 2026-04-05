@@ -13,7 +13,7 @@ const HS_CODE: Record<string, string> = {
 export async function GET() {
   const rows = await getShippingExportRows();
 
-  const templatePath = path.join(process.cwd(), "public", "쉽터 배송 정보 기입 양식.xlsx");
+  const templatePath = path.join(process.cwd(), "public", "shipter-template.xlsx");
   const workbook = XLSX.readFile(templatePath);
   const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
