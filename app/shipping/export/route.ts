@@ -1,113 +1,77 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import path from "path";
+import fs from "fs";
 import { getShippingExportRows } from "@/lib/actions/shipping";
 
-// 40컬럼 헤더 정의
-// 데이터 컬럼: 실제 DB값, 고정값: 항상 동일한 값, 빈칸: 수동 입력용
-const HEADERS = [
-  "주문번호",         // 1  order_num
-  "주문일자",         // 2  date
-  "구매자명",         // 3  customer_name
-  "브랜드",           // 4  brand
-  "상품명",           // 5  product_name
-  "옵션",             // 6  product_option
-  "수량",             // 7  quantity
-  "판매가(₽)",        // 8  price_rub
-  "원화매입(₩)",      // 9  krw
-  "단가USD",          // 10 unit_price_usd
-  "총금액USD",        // 11 계산값: unit_price_usd * quantity
-  "수취인명",         // 12 recipient_name
-  "수취인 연락처",    // 13 recipient_phone
-  "수취인 이메일",    // 14 recipient_email
-  "우편번호",         // 15 zip_code
-  "지역(Oblast)",     // 16 region
-  "도시",             // 17 city
-  "상세주소",         // 18 address
-  "개인통관고유번호", // 19 customs_number
-  "발송국가",         // 20 고정: Korea
-  "수취국가",         // 21 고정: Russia
-  "배송방법",         // 22 빈칸
-  "운송장번호",       // 23 빈칸
-  "박스번호",         // 24 빈칸
-  "무게(kg)",         // 25 빈칸
-  "가로(cm)",         // 26 빈칸
-  "세로(cm)",         // 27 빈칸
-  "높이(cm)",         // 28 빈칸
-  "HS코드",           // 29 빈칸
-  "상품분류",         // 30 빈칸
-  "원산지",           // 31 고정: Korea
-  "통화",             // 32 고정: USD
-  "관세율(%)",        // 33 빈칸
-  "보험여부",         // 34 빈칸
-  "보험금액",         // 35 빈칸
-  "비고1",            // 36 빈칸
-  "비고2",            // 37 빈칸
-  "비고3",            // 38 빈칸
-  "비고4",            // 39 빈칸
-  "비고5",            // 40 빈칸
-];
+const HS_CODE: Record<string, string> = {
+  Cosmetic: "3304999000",
+  Clothes: "6110301000",
+  Toy: "9503003919",
+};
 
 export async function GET() {
   const rows = await getShippingExportRows();
 
-  const data: (string | number | null)[][] = rows.map((r) => [
-    r.order_num,
-    r.date,
-    r.customer_name ?? "",
-    r.brand ?? "",
-    r.product_name,
-    r.product_option ?? "",
-    r.quantity,
-    r.price_rub,
-    r.krw ?? "",
-    r.unit_price_usd ?? "",
-    r.unit_price_usd != null ? r.unit_price_usd * r.quantity : "",
-    r.recipient_name ?? "",
-    r.recipient_phone ?? "",
-    r.recipient_email ?? "",
-    r.zip_code ?? "",
-    r.region ?? "",
-    r.city ?? "",
-    r.address ?? "",
-    r.customs_number ?? "",
-    "Korea",   // 20 고정
-    "Russia",  // 21 고정
-    "",        // 22 배송방법
-    "",        // 23 운송장번호
-    "",        // 24 박스번호
-    "",        // 25 무게
-    "",        // 26 가로
-    "",        // 27 세로
-    "",        // 28 높이
-    "",        // 29 HS코드
-    "",        // 30 상품분류
-    "Korea",   // 31 원산지 고정
-    "USD",     // 32 통화 고정
-    "",        // 33 관세율
-    "",        // 34 보험여부
-    "",        // 35 보험금액
-    "",        // 36 비고1
-    "",        // 37 비고2
-    "",        // 38 비고3
-    "",        // 39 비고4
-    "",        // 40 비고5
-  ]);
+  const templatePath = path.join(process.cwd(), "public", "쉽터 배송 정보 기입 양식.xlsx");
+  const workbook = XLSX.readFile(templatePath);
+  const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
-  const worksheet = XLSX.utils.aoa_to_sheet([HEADERS, ...data]);
+  rows.forEach((r, i) => {
+    const rowIdx = i + 1; // row 0 = 헤더, row 1부터 데이터
 
-  // 헤더 행 스타일 (배경색 설정은 xlsx pro 버전에서만 가능, 여기선 컬럼 너비만 조정)
-  worksheet["!cols"] = HEADERS.map(() => ({ wch: 18 }));
+    const rowData = [
+      "RU",                                                        // A  배송국가
+      "SHIPTER_EREG1",                                             // B  배송타입
+      r.order_num,                                                 // C  주문번호
+      "",                                                          // D  운송장번호
+      "",                                                          // E  출발국가 택배번호
+      "FANKO",                                                     // F  발송인 이름
+      "01056959120",                                               // G  발송인 전화번호
+      "",                                                          // H  발송인 이메일
+      "07764",                                                     // I  발송인 우편번호
+      "Korea",                                                     // J  발송인 지역
+      "Seoul",                                                     // K  발송인 도시
+      "B01ho, Gangseo-gu,f Gangseo-ro 17na-gil",                  // L  발송인 주소
+      r.recipient_name ?? "",                                      // M  수취인 이름
+      r.recipient_phone ?? "",                                     // N  수취인 전화번호
+      r.recipient_email ?? "",                                     // O  수취인 이메일
+      r.zip_code ?? "",                                            // P  수취인 우편번호
+      r.region ?? "",                                              // Q  수취인 지역
+      r.city ?? "",                                                // R  수취인 도시
+      r.address ?? "",                                             // S  수취인 주소1
+      "",                                                          // T  수취인 주소2
+      "",                                                          // U  수출신고신청여부
+      "",                                                          // V  수출신고번호
+      "",                                                          // W  무게(Kg)
+      "",                                                          // X  가로(Cm)
+      "",                                                          // Y  세로(Cm)
+      "",                                                          // Z  높이(Cm)
+      "",                                                          // AA 통관번호종류
+      r.customs_number ?? "",                                      // AB 통관번호
+      "USD",                                                       // AC 화폐 종류
+      "",                                                          // AD 상품코드(SKU)
+      r.product_name,                                              // AE 상품명
+      r.quantity,                                                  // AF 수량
+      r.unit_price_usd ?? "",                                      // AG 단가
+      r.brand ?? "",                                               // AH 브랜드명
+      "",                                                          // AI 제품 URL
+      HS_CODE[r.product_type ?? ""] ?? "",                         // AJ HS CODE
+      "",                                                          // AK 사용자 데이터1
+      "",                                                          // AL 사용자 데이터2
+      "",                                                          // AM 사용자 데이터3
+      "",                                                          // AN 사용자 데이터4
+    ];
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "배송정보");
+    XLSX.utils.sheet_add_aoa(worksheet, [rowData], { origin: { r: rowIdx, c: 0 } });
+  });
 
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 
   const today = new Date().toISOString().slice(0, 10);
   return new NextResponse(buffer, {
     headers: {
-      "Content-Type":
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="shipping_${today}.xlsx"`,
     },
   });

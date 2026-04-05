@@ -20,7 +20,6 @@ export type ShippingInfoRow = {
 export type OrderForShipping = {
   order_num: string;
   date: string;
-  customer_name: string | null;
   product_names: string;
   shipping: ShippingInfoRow | null;
 };
@@ -28,8 +27,8 @@ export type OrderForShipping = {
 export type ShippingExportRow = {
   order_num: string;
   date: string;
-  customer_name: string | null;
   product_name: string;
+  product_type: string | null;
   product_option: string | null;
   brand: string | null;
   quantity: number;
@@ -52,7 +51,7 @@ export async function getOrdersForShipping(): Promise<OrderForShipping[]> {
   const [ordersResult, itemsResult, shippingResult] = await Promise.all([
     supabase
       .from("orders")
-      .select("order_num, date, customer_name")
+      .select("order_num, date")
       .order("date", { ascending: false }),
     supabase
       .from("order_items")
@@ -83,7 +82,6 @@ export async function getOrdersForShipping(): Promise<OrderForShipping[]> {
   return (ordersResult.data ?? []).map((order) => ({
     order_num: order.order_num,
     date: order.date,
-    customer_name: order.customer_name,
     product_names: (itemsByOrder.get(order.order_num) ?? []).join("\n"),
     shipping: shippingByOrder.get(order.order_num) ?? null,
   }));
@@ -135,11 +133,11 @@ export async function getShippingExportRows(): Promise<ShippingExportRow[]> {
     supabase
       .from("order_items")
       .select(
-        "order_num, product_name, product_option, brand, quantity, price_rub, krw, unit_price_usd"
+        "order_num, product_name, product_type, product_option, brand, quantity, price_rub, krw, unit_price_usd"
       ),
     supabase
       .from("orders")
-      .select("order_num, date, customer_name"),
+      .select("order_num, date"),
     supabase
       .from("shipping_info")
       .select(
@@ -151,15 +149,9 @@ export async function getShippingExportRows(): Promise<ShippingExportRow[]> {
   if (ordersResult.error) throw new Error(ordersResult.error.message);
   if (shippingResult.error) throw new Error(shippingResult.error.message);
 
-  const ordersByNum = new Map<
-    string,
-    { date: string; customer_name: string | null }
-  >();
+  const ordersByNum = new Map<string, { date: string }>();
   for (const order of ordersResult.data ?? []) {
-    ordersByNum.set(order.order_num, {
-      date: order.date,
-      customer_name: order.customer_name,
-    });
+    ordersByNum.set(order.order_num, { date: order.date });
   }
 
   const shippingByOrder = new Map<string, ShippingInfoRow>();
@@ -173,8 +165,8 @@ export async function getShippingExportRows(): Promise<ShippingExportRow[]> {
     return {
       order_num: item.order_num,
       date: order?.date ?? "",
-      customer_name: order?.customer_name ?? null,
       product_name: item.product_name,
+      product_type: item.product_type,
       product_option: item.product_option,
       brand: item.brand,
       quantity: item.quantity,

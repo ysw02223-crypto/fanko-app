@@ -1,7 +1,5 @@
 import { DeleteOrderButton } from "@/components/delete-order-button";
 import { OrderEditForm } from "@/components/order-edit-form";
-import { OrderItemAddForm } from "@/components/order-item-add-form";
-import { OrderItemEditCard } from "@/components/order-item-edit-card";
 import { createClient } from "@/lib/supabase/server";
 import type { OrderItemRow, OrderRow } from "@/lib/schema";
 import Link from "next/link";
@@ -65,26 +63,7 @@ export default async function OrderDetailPage({
         </div>
       </div>
 
-      <OrderEditForm order={typedOrder} />
-
-      <section className="flex flex-col gap-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-lg font-semibold">상품 행</h2>
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">{typedItems.length}건</span>
-        </div>
-        <OrderItemAddForm orderNum={orderNum} />
-        <div className="flex flex-col gap-3">
-          {typedItems.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
-              등록된 상품이 없습니다. 위 양식으로 추가하세요.
-            </p>
-          ) : (
-            typedItems.map((item) => (
-              <OrderItemEditCard key={item.id} item={item} orderNum={orderNum} />
-            ))
-          )}
-        </div>
-      </section>
+      <OrderEditForm order={typedOrder} items={typedItems} />
     </div>
   );
 }

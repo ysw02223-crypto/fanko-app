@@ -67,8 +67,7 @@ const CLICK_SLOP_PX = 5;
 const W = {
   num: 24,
   order_num: 80,
-  date: 48,
-  customer_name: 100,
+  date: 64,
   product_names: 280,
   recipient_name: 180,
   recipient_phone: 90,
@@ -81,26 +80,18 @@ const W = {
 } as const;
 
 const TOTAL_MIN_WIDTH =
-  W.num + W.order_num + W.date + W.customer_name + W.product_names +
+  W.num + W.order_num + W.date + W.product_names +
   W.recipient_name + W.recipient_phone + W.recipient_email + W.zip_code +
   W.region + W.city + W.address + W.customs_number;
-
-// sticky left 누적 위치
-const L = {
-  num: 0,
-  order_num: W.num,
-  date: W.num + W.order_num,
-  customer_name: W.num + W.order_num + W.date,
-} as const;
 
 // ── CSS 클래스 ──────────────────────────────────────────────────────────────────
 
 const thClass =
   "whitespace-nowrap border-b-2 border-r border-zinc-300 bg-zinc-50 px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
 const tdBase =
-  "border-b border-r border-zinc-200 px-2 py-1 align-middle text-sm dark:border-zinc-700";
+  "border-b border-r border-zinc-200 px-2 py-1 align-middle text-sm dark:border-zinc-700 overflow-hidden";
 const cellBtn =
-  "w-full cursor-pointer rounded px-1 py-0.5 text-left transition hover:bg-black/5 dark:hover:bg-white/10 min-h-[28px] flex items-center";
+  "w-full cursor-pointer rounded px-1 py-0.5 text-left transition hover:bg-black/5 dark:hover:bg-white/10 min-h-[28px] flex items-center truncate";
 const editingBg = "bg-sky-100 dark:bg-sky-950/50";
 
 // ── 헬퍼 ────────────────────────────────────────────────────────────────────────
@@ -164,6 +155,7 @@ function formatDate(dateStr: string): string {
 export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const [orders, setOrders] = useState<OrderForShipping[]>(initialOrders);
   const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [focusedCell, setFocusedCell] = useState<EditTarget | null>(null);
   const [draft, setDraft] = useState("");
   const [editBaseline, setEditBaseline] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -178,8 +170,10 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
 
   const tableRef = useRef<HTMLDivElement>(null);
   const headerTableRef = useRef<HTMLTableElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const barInputRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
 
   // ── 초기화 effects ──────────────────────────────────────────────────────────
@@ -198,6 +192,18 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     const handler = (e: MouseEvent) => {
       if (!(e.target as HTMLElement).closest("[data-filter-dropdown]")) {
         setOpenFilter(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // 테이블 외부 클릭 시 focusedCell 닫힘
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setFocusedCell(null);
+        setEditing(null);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -446,16 +452,17 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
 
   const startEdit = (orderNum: string, field: ShippingEditableField, current: string) => {
     setEditing({ orderNum, field });
+    setFocusedCell({ orderNum, field });
     setDraft(current);
     setEditBaseline(current);
   };
 
-  const cancelEdit = () => setEditing(null);
+  const cancelEdit = () => setEditing(null); // focusedCell 유지
 
   const finishEdit = async (orderNum: string, field: ShippingEditableField) => {
     if (editing?.orderNum !== orderNum || editing?.field !== field) return;
     const ok = await saveField(orderNum, field, draft, editBaseline);
-    if (ok) setEditing(null);
+    if (ok) setEditing(null); // focusedCell 유지
   };
 
   const isEditing = (orderNum: string, field: ShippingEditableField) =>
@@ -497,11 +504,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
       if (statusFilter === "done" && !isComplete(o)) return false;
       if (statusFilter === "todo" && isComplete(o)) return false;
       if (q) {
-        if (
-          !o.order_num.toLowerCase().includes(q) &&
-          !(o.customer_name ?? "").toLowerCase().includes(q)
-        )
-          return false;
+        if (!o.order_num.toLowerCase().includes(q)) return false;
       }
       return true;
     });
@@ -669,7 +672,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
               {/* 검색 */}
               <input
                 type="text"
-                placeholder="주문번호·고객명 검색…"
+                placeholder="주문번호 검색…"
                 className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                 style={{ minWidth: "200px" }}
                 value={searchQuery}
@@ -698,7 +701,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
         </p>
       </div>
 
-      <div className="w-full rounded-2xl bg-white shadow-sm outline outline-1 outline-zinc-200 dark:bg-zinc-950 dark:outline-zinc-800">
+      <div ref={wrapperRef} className="w-full rounded-2xl bg-white shadow-sm outline outline-1 outline-zinc-200 dark:bg-zinc-950 dark:outline-zinc-800">
         {/* sticky 헤더 */}
         <div
           className="sticky z-20 bg-white dark:bg-zinc-950"
@@ -713,7 +716,6 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
               <col style={{ width: W.num }} />
               <col style={{ width: W.order_num }} />
               <col style={{ width: W.date }} />
-              <col style={{ width: W.customer_name }} />
               <col style={{ width: W.product_names }} />
               <col style={{ width: W.recipient_name }} />
               <col style={{ width: W.recipient_phone }} />
@@ -726,10 +728,9 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
             </colgroup>
             <thead>
               <tr>
-                <th className={`${thClass} sticky z-30`} style={{ left: L.num }}>#</th>
-                <th className={`${thClass} sticky z-30`} style={{ left: L.order_num }}>주문번호</th>
-                <th className={`${thClass} sticky z-30`} style={{ left: L.date }}>주문일자</th>
-                <th className={`${thClass} sticky z-30`} style={{ left: L.customer_name }}>고객명</th>
+                <th className={thClass}>#</th>
+                <th className={thClass}>주문번호</th>
+                <th className={thClass}>주문일자</th>
                 <th className={`${thClass} text-left`}>상품명</th>
                 <th className={thClass}>수취인명</th>
                 <th className={thClass}>연락처</th>
@@ -743,6 +744,44 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
             </thead>
           </table>
         </div>
+
+        {/* 편집 중 텍스트 전문 미리보기 바 */}
+        {focusedCell && (() => {
+          const isActiveEdit = editing?.orderNum === focusedCell.orderNum && editing?.field === focusedCell.field;
+          const focusedOrder = orders.find((o) => o.order_num === focusedCell.orderNum);
+          const savedVal = focusedOrder?.shipping?.[focusedCell.field] ?? "";
+          return (
+            <div className="sticky z-20 flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-3 py-1.5 dark:border-sky-800 dark:bg-sky-950/40" style={{ top: 108 }}>
+              <span className="shrink-0 text-xs font-semibold text-sky-600 dark:text-sky-400">
+                {FIELD_LABELS[focusedCell.field]}
+              </span>
+              {isActiveEdit ? (
+                <input
+                  ref={barInputRef}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={(e) => {
+                    if (e.relatedTarget === inputRef.current) return;
+                    void finishEdit(focusedCell.orderNum, focusedCell.field);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); void finishEdit(focusedCell.orderNum, focusedCell.field); }
+                    if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+                  }}
+                  className="flex-1 rounded border border-emerald-400 bg-white px-2 py-0.5 text-sm text-zinc-900 outline-none focus:ring-1 focus:ring-emerald-400 dark:bg-zinc-900 dark:text-zinc-100"
+                  placeholder={FIELD_LABELS[focusedCell.field]}
+                />
+              ) : (
+                <span
+                  className="flex-1 cursor-pointer rounded px-2 py-0.5 text-sm text-zinc-700 hover:bg-sky-100 dark:text-zinc-300 dark:hover:bg-sky-900/30 break-all"
+                  onClick={() => startEdit(focusedCell.orderNum, focusedCell.field, savedVal)}
+                >
+                  {savedVal.trim() || <span className="text-zinc-400 dark:text-zinc-600">（비어 있음）</span>}
+                </span>
+              )}
+            </div>
+          );
+        })()}
 
         {/* 스크롤 바디 */}
         <div ref={tableRef} className="overflow-x-auto">
@@ -759,7 +798,6 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                 <col style={{ width: W.num }} />
                 <col style={{ width: W.order_num }} />
                 <col style={{ width: W.date }} />
-                <col style={{ width: W.customer_name }} />
                 <col style={{ width: W.product_names }} />
                 <col style={{ width: W.recipient_name }} />
                 <col style={{ width: W.recipient_phone }} />
@@ -781,45 +819,27 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                   return (
                     <tr key={order.order_num} className={`${rowBg} hover:brightness-95`}>
                       {/* # */}
-                      <td
-                        className={`${tdBase} sticky z-10 text-center text-xs text-zinc-400 ${rowBg}`}
-                        style={{ left: L.num }}
-                      >
+                      <td className={`${tdBase} text-center text-xs text-zinc-400`}>
                         {idx + 1}
                       </td>
 
                       {/* 주문번호 */}
-                      <td
-                        className={`${tdBase} sticky z-10 whitespace-nowrap font-mono text-xs ${rowBg}`}
-                        style={{ left: L.order_num }}
-                      >
+                      <td className={`${tdBase} whitespace-nowrap font-mono text-xs`}>
                         {order.order_num}
                       </td>
 
                       {/* 주문일자 */}
-                      <td
-                        className={`${tdBase} sticky z-10 whitespace-nowrap text-center text-xs text-zinc-500 dark:text-zinc-400 ${rowBg}`}
-                        style={{ left: L.date }}
-                      >
+                      <td className={`${tdBase} whitespace-nowrap text-center text-xs text-zinc-500 dark:text-zinc-400`}>
                         {formatDate(order.date)}
-                      </td>
-
-                      {/* 고객명 */}
-                      <td
-                        className={`${tdBase} sticky z-10 whitespace-nowrap ${rowBg}`}
-                        style={{ left: L.customer_name }}
-                      >
-                        {order.customer_name ?? "—"}
                       </td>
 
                       {/* 상품명 */}
                       <td className={`${tdBase} text-xs text-zinc-600 dark:text-zinc-400`}>
-                        {order.product_names.split("\n").map((name, i) => (
-                          <span key={i}>
-                            {i > 0 && <br />}
-                            {name}
-                          </span>
-                        ))}
+                        <div className="overflow-hidden">
+                          {order.product_names.split("\n").map((name, i) => (
+                            <div key={i} className="truncate">{name}</div>
+                          ))}
+                        </div>
                       </td>
 
                       {/* 편집 가능 셀들 */}
@@ -843,7 +863,10 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                                 ref={inputRef}
                                 value={draft}
                                 onChange={(e) => setDraft(e.target.value)}
-                                onBlur={() => void finishEdit(order.order_num, field)}
+                                onBlur={(e) => {
+                                  if (e.relatedTarget === barInputRef.current) return;
+                                  void finishEdit(order.order_num, field);
+                                }}
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") {
                                     e.preventDefault();

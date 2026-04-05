@@ -9,6 +9,7 @@ import {
 } from "@/lib/orders-line-items-flatten";
 import {
   ORDER_PROGRESS,
+  ORDER_ROUTES,
   PHOTO_STATUS,
   PLATFORMS,
   PRODUCT_CATEGORIES,
@@ -38,7 +39,7 @@ const ORDER_SELECT = `
   )
 `;
 
-type OrderEditableField = "customer_name" | "purchase_channel";
+type OrderEditableField = "customer_name" | "purchase_channel" | "date" | "platform" | "order_type";
 type ItemEditableField =
   | "product_type"
   | "product_name"
@@ -59,6 +60,9 @@ type EditTarget =
 const ORDER_FIELD_LABELS: Record<OrderEditableField, string> = {
   customer_name: "고객명",
   purchase_channel: "거래처",
+  date: "일자",
+  platform: "플랫폼",
+  order_type: "경로",
 };
 
 const ITEM_FIELD_LABELS: Record<ItemEditableField, string> = {
@@ -251,6 +255,7 @@ const CLICK_SLOP_PX = 5;
 export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWithNestedItems[] }) {
   const [flatRows, setFlatRows] = useState<FlatOrderItemRow[]>(() => flattenOrders(initialOrders));
   const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [focusedCell, setFocusedCell] = useState<EditTarget | null>(null);
   const [draft, setDraft] = useState<string>("");
   const [editBaseline, setEditBaseline] = useState<string>("");
   const [toast, setToast] = useState<string | null>(null);
@@ -259,10 +264,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const [undoingId, setUndoingId] = useState<string | null>(null);
 
   const tableRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const headerWrapRef = useRef<HTMLDivElement>(null);
   const headerTableRef = useRef<HTMLTableElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const barInputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
   const savingRef = useRef(false);
 
@@ -333,6 +340,18 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     const handler = (e: MouseEvent) => {
       if (!(e.target as HTMLElement).closest("[data-filter-dropdown]")) {
         setOpenFilter(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // 테이블 외부 클릭 시 focusedCell 닫힘
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setFocusedCell(null);
+        setEditing(null);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -461,10 +480,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   useEffect(() => {
     const bodyEl = tableRef.current;
-    const headerTbl = headerTableRef.current;
-    if (!bodyEl || !headerTbl) return;
+    const headerWrap = headerWrapRef.current;
+    if (!bodyEl || !headerWrap) return;
     const onScroll = () => {
-      headerTbl.style.transform = `translateX(-${bodyEl.scrollLeft}px)`;
+      headerWrap.scrollLeft = bodyEl.scrollLeft;
     };
     onScroll();
     bodyEl.addEventListener("scroll", onScroll);
@@ -478,6 +497,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       if (
         f === "customer_name" ||
         f === "purchase_channel" ||
+        f === "date" ||
         f === "product_name" ||
         f === "product_option" ||
         f === "quantity" ||
@@ -618,6 +638,18 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       if (field === "purchase_channel") {
         return { payload: { purchase_channel: raw.trim() === "" ? null : raw.trim() } };
       }
+      if (field === "date") {
+        if (!raw.trim()) return { error: "일자를 입력하세요." };
+        return { payload: { date: raw.trim() } };
+      }
+      if (field === "platform") {
+        if (!(PLATFORMS as readonly string[]).includes(raw)) return { error: "플랫폼 값이 올바르지 않습니다." };
+        return { payload: { platform: raw } };
+      }
+      if (field === "order_type") {
+        if (!(ORDER_ROUTES as readonly string[]).includes(raw)) return { error: "경로 값이 올바르지 않습니다." };
+        return { payload: { order_type: raw } };
+      }
       return { error: "알 수 없는 필드입니다." };
     },
     [],
@@ -626,6 +658,9 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const buildOrderRevertPayload = useCallback((field: OrderEditableField, oldRaw: string): Record<string, unknown> => {
     if (field === "customer_name") return { customer_name: oldRaw.trim() === "" ? null : oldRaw.trim() };
     if (field === "purchase_channel") return { purchase_channel: oldRaw.trim() === "" ? null : oldRaw.trim() };
+    if (field === "date") return { date: oldRaw.trim() };
+    if (field === "platform") return { platform: oldRaw };
+    if (field === "order_type") return { order_type: oldRaw };
     return {};
   }, []);
 
@@ -732,6 +767,14 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     [buildOrderPayload, buildOrderRevertPayload, fetchOrders, pushHistory, runOrderRevert, showError],
   );
 
+  const quickSaveOrder = useCallback(
+    async (orderNum: string, field: OrderEditableField, value: string, prevValue: string) => {
+      const ok = await saveOrderField(orderNum, field, value, prevValue);
+      if (ok) setEditing(null);
+    },
+    [saveOrderField],
+  );
+
   const saveItemField = useCallback(
     async (
       itemId: string,
@@ -778,22 +821,23 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
   const startEdit = (target: EditTarget, current: string) => {
     setEditing(target);
+    setFocusedCell(target);
     setDraft(current);
     setEditBaseline(current);
   };
 
-  const cancelEdit = () => setEditing(null);
+  const cancelEdit = () => setEditing(null); // focusedCell 유지
 
   const finishOrderField = async (rowKey: string, orderNum: string, field: OrderEditableField) => {
     if (!editing || editing.kind !== "order" || editing.rowKey !== rowKey || editing.field !== field) return;
     const ok = await saveOrderField(orderNum, field, draft, editBaseline);
-    if (ok) setEditing(null);
+    if (ok) setEditing(null); // focusedCell 유지
   };
 
   const finishItemField = async (itemId: string, field: ItemEditableField, item: OrderItemRow) => {
     if (!editing || editing.kind !== "item" || editing.itemId !== itemId || editing.field !== field) return;
     const ok = await saveItemField(itemId, editing.orderNum, field, draft, editBaseline, item);
-    if (ok) setEditing(null);
+    if (ok) setEditing(null); // focusedCell 유지
   };
 
   const isEditingOrder = (rowKey: string, field: OrderEditableField) =>
@@ -1025,7 +1069,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         주문 {orderCount}건 · 표시 행 {lineCount}줄 · 테이블을 드래그하면 좌우로 스크롤됩니다.
       </p>
 
-      <div className="w-full rounded-2xl bg-white shadow-sm outline outline-1 outline-zinc-200 dark:bg-zinc-950 dark:outline-zinc-800">
+      <div ref={wrapperRef} className="w-full rounded-2xl bg-white shadow-sm outline outline-1 outline-zinc-200 dark:bg-zinc-950 dark:outline-zinc-800">
         <div
           ref={headerWrapRef}
           className="sticky z-20 bg-white dark:bg-zinc-950"
@@ -1084,6 +1128,93 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
             </thead>
           </table>
         </div>
+
+        {/* 편집 중 텍스트 전문 미리보기 바 */}
+        {focusedCell && (() => {
+          const isActiveEdit = editing !== null &&
+            editing.kind === focusedCell.kind &&
+            editing.field === focusedCell.field &&
+            (focusedCell.kind === "order"
+              ? editing.kind === "order" && editing.rowKey === focusedCell.rowKey
+              : editing.kind === "item" && editing.itemId === (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId);
+
+          const fieldLabel = focusedCell.kind === "order"
+            ? (ORDER_FIELD_LABELS as Record<string, string>)[focusedCell.field] ?? focusedCell.field
+            : (ITEM_FIELD_LABELS as Record<string, string>)[focusedCell.field] ?? focusedCell.field;
+
+          // 저장된 값 가져오기
+          const savedVal = (() => {
+            if (focusedCell.kind === "item") {
+              const itemId = (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId;
+              const row = flatRows.find((r) => r.item?.id === itemId);
+              return String((row?.item as Record<string, unknown> | null)?.[focusedCell.field] ?? "");
+            }
+            // order: orderNum으로 찾기
+            const row = flatRows.find((r) => r.order.order_num === focusedCell.orderNum);
+            return String((row?.order as Record<string, unknown> | undefined)?.[focusedCell.field] ?? "");
+          })();
+
+          // 바에서 편집 시작
+          const startBarEdit = () => {
+            if (isActiveEdit) return;
+            startEdit(focusedCell, savedVal);
+            requestAnimationFrame(() => barInputRef.current?.focus());
+          };
+
+          // 바에서 finishEdit 호출
+          const finishBar = () => {
+            if (!isActiveEdit) return;
+            if (focusedCell.kind === "order") {
+              void finishOrderField(
+                (focusedCell as Extract<EditTarget, { kind: "order" }>).rowKey,
+                focusedCell.orderNum,
+                focusedCell.field as OrderEditableField,
+              );
+            } else {
+              const row = flatRows.find((r) => r.item?.id === (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId);
+              if (row?.item) void finishItemField((focusedCell as Extract<EditTarget, { kind: "item" }>).itemId, focusedCell.field as ItemEditableField, row.item);
+            }
+          };
+
+          // select 타입 필드는 바 편집 미지원
+          const isTextInput = ["customer_name", "purchase_channel", "date", "product_name", "product_option", "quantity", "price_rub", "prepayment_rub", "krw"].includes(focusedCell.field);
+
+          return (
+            <div className="sticky z-20 flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-3 py-1.5 dark:border-sky-800 dark:bg-sky-950/40" style={{ top: 108 }}>
+              <span className="shrink-0 text-xs font-semibold text-sky-600 dark:text-sky-400">
+                {fieldLabel}
+              </span>
+              {isTextInput ? (
+                isActiveEdit ? (
+                  <input
+                    ref={barInputRef}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={(e) => { if (e.relatedTarget === inputRef.current) return; finishBar(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); finishBar(); }
+                      if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+                    }}
+                    className="flex-1 rounded border border-emerald-400 bg-white px-2 py-0.5 text-sm text-zinc-900 outline-none focus:ring-1 focus:ring-emerald-400 dark:bg-zinc-900 dark:text-zinc-100"
+                    placeholder={fieldLabel}
+                  />
+                ) : (
+                  <span
+                    className="flex-1 cursor-pointer rounded px-2 py-0.5 text-sm text-zinc-700 hover:bg-sky-100 dark:text-zinc-300 dark:hover:bg-sky-900/30 break-all"
+                    onClick={startBarEdit}
+                  >
+                    {savedVal.trim() || <span className="text-zinc-400 dark:text-zinc-600">（비어 있음）</span>}
+                  </span>
+                )
+              ) : (
+                <span className="flex-1 text-sm text-zinc-700 dark:text-zinc-300 break-all">
+                  {savedVal.trim() || <span className="text-zinc-400 dark:text-zinc-600">（비어 있음）</span>}
+                </span>
+              )}
+            </div>
+          );
+        })()}
+
         <div ref={tableRef} style={{ overflowX: "auto", overflowY: "visible" }}>
           <table
             className="min-w-full border-collapse text-left text-sm"
@@ -1199,7 +1330,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishItemField(id, "product_name", item)}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "product_name", item); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1228,7 +1359,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishItemField(id, "product_option", item)}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "product_option", item); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1364,13 +1495,86 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 일자 */}
-                  <td className={`${tdBase} whitespace-nowrap ${whiteBg}`}>{order.date?.slice(0, 10)}</td>
+                  <td className={`${tdBase} whitespace-nowrap ${isEditingOrder(rowKey, "date") ? editingBg : whiteBg}`}>
+                    {isEditingOrder(rowKey, "date") ? (
+                      <input
+                        ref={inputRef}
+                        type="date"
+                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishOrderField(rowKey, on, "date"); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtn}
+                        onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "date" }, order.date?.slice(0, 10) ?? "")}
+                      >
+                        {order.date?.slice(0, 10) ?? "—"}
+                      </button>
+                    )}
+                  </td>
 
                   {/* 플랫폼 */}
-                  <td className={`${tdBase} ${whiteBg}`}>{order.platform}</td>
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "platform") ? editingBg : whiteBg}`}>
+                    {isEditingOrder(rowKey, "platform") ? (
+                      <select
+                        ref={selectRef}
+                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => {
+                          setDraft(e.target.value);
+                          void quickSaveOrder(on, "platform", e.target.value, order.platform);
+                        }}
+                        onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                      >
+                        {PLATFORMS.map((p) => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtn}
+                        onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "platform" }, order.platform)}
+                      >
+                        {order.platform}
+                      </button>
+                    )}
+                  </td>
 
                   {/* 경로 */}
-                  <td className={`${tdBase} ${whiteBg}`}>{order.order_type}</td>
+                  <td className={`${tdBase} ${isEditingOrder(rowKey, "order_type") ? editingBg : whiteBg}`}>
+                    {isEditingOrder(rowKey, "order_type") ? (
+                      <select
+                        ref={selectRef}
+                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => {
+                          setDraft(e.target.value);
+                          void quickSaveOrder(on, "order_type", e.target.value, order.order_type);
+                        }}
+                        onKeyDown={(e) => e.key === "Escape" && cancelEdit()}
+                      >
+                        {ORDER_ROUTES.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <button
+                        type="button"
+                        className={cellBtn}
+                        onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "order_type" }, order.order_type)}
+                      >
+                        {order.order_type}
+                      </button>
+                    )}
+                  </td>
 
                   {/* 고객 */}
                   <td className={`${tdBase} ${isEditingOrder(rowKey, "customer_name") ? editingBg : whiteBg}`}>
@@ -1380,7 +1584,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishOrderField(rowKey, on, "customer_name")}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishOrderField(rowKey, on, "customer_name"); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1408,7 +1612,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishOrderField(rowKey, on, "purchase_channel")}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishOrderField(rowKey, on, "purchase_channel"); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1474,7 +1678,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-14 rounded border border-sky-400 bg-white px-1 py-0.5 text-center text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishItemField(id, "quantity", item)}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "quantity", item); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1501,7 +1705,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishItemField(id, "price_rub", item)}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "price_rub", item); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1528,7 +1732,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishItemField(id, "krw", item)}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "krw", item); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1555,7 +1759,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
-                        onBlur={() => void finishItemField(id, "prepayment_rub", item)}
+                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "prepayment_rub", item); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
