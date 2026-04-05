@@ -753,14 +753,6 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           showError(error.message);
           return false;
         }
-        const { error: histErr1 } = await supabase.from("order_history").insert({
-          order_num: orderNum,
-          field,
-          old_value: oldRaw || null,
-          new_value: newRaw || null,
-          changed_by: "수동",
-        });
-        if (histErr1) console.error("[order_history insert 실패 - order]", histErr1.message, histErr1);
         await fetchOrders();
         const revertPayload = buildOrderRevertPayload(field, oldRaw);
         pushHistory({
@@ -813,14 +805,6 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           showError(error.message);
           return false;
         }
-        const { error: histErr2 } = await supabase.from("order_history").insert({
-          order_num: orderNum,
-          field,
-          old_value: oldRaw || null,
-          new_value: newRaw || null,
-          changed_by: "수동",
-        });
-        if (histErr2) console.error("[order_history insert 실패 - item]", histErr2.message, histErr2);
         await fetchOrders();
 
         // krw 저장 성공 후 PAY → BUY IN KOREA 자동 트리거
