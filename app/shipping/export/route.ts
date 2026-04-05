@@ -1,7 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import path from "path";
-import fs from "fs";
 import { getShippingExportRows } from "@/lib/actions/shipping";
 
 const HS_CODE: Record<string, string> = {
@@ -10,11 +8,18 @@ const HS_CODE: Record<string, string> = {
   Toy: "9503003919",
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const rows = await getShippingExportRows();
 
-  const templatePath = path.join(process.cwd(), "public", "shipter-template.xlsx");
-  const workbook = XLSX.readFile(templatePath);
+  // public/ 파일을 HTTP fetch로 읽기 (fs 불필요, Vercel 서버리스에서 안정적)
+  const { origin } = new URL(req.url);
+  const templateRes = await fetch(`${origin}/shipter-template.xlsx`);
+  if (!templateRes.ok) {
+    return NextResponse.json({ error: "템플릿 파일을 불러오지 못했습니다." }, { status: 500 });
+  }
+  const templateBuffer = await templateRes.arrayBuffer();
+
+  const workbook = XLSX.read(new Uint8Array(templateBuffer), { type: "array" });
   const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
   rows.forEach((r, i) => {
