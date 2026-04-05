@@ -65,19 +65,19 @@ const CLICK_SLOP_PX = 5;
 
 // 컬럼 너비 (px)
 const W = {
-  num: 32,
-  order_num: 100,
-  date: 80,
+  num: 24,
+  order_num: 80,
+  date: 48,
   customer_name: 100,
-  product_names: 200,
-  recipient_name: 130,
-  recipient_phone: 130,
+  product_names: 280,
+  recipient_name: 180,
+  recipient_phone: 90,
   recipient_email: 180,
-  zip_code: 100,
+  zip_code: 80,
   region: 130,
   city: 130,
   address: 200,
-  customs_number: 130,
+  customs_number: 110,
 } as const;
 
 const TOTAL_MIN_WIDTH =
@@ -150,6 +150,13 @@ function isComplete(order: OrderForShipping): boolean {
 
 function displayVal(val: string | null | undefined): string {
   return val?.trim() ? val.trim() : "—";
+}
+
+// "2026-04-03" → "04/03"
+function formatDate(dateStr: string): string {
+  const parts = dateStr.split("-");
+  if (parts.length === 3) return `${parts[1]}/${parts[2]}`;
+  return dateStr;
 }
 
 // ── 메인 컴포넌트 ───────────────────────────────────────────────────────────────
@@ -794,7 +801,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                         className={`${tdBase} sticky z-10 whitespace-nowrap text-center text-xs text-zinc-500 dark:text-zinc-400 ${rowBg}`}
                         style={{ left: L.date }}
                       >
-                        {order.date}
+                        {formatDate(order.date)}
                       </td>
 
                       {/* 고객명 */}
@@ -820,6 +827,8 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                         const raw = s?.[field] ?? "";
                         const active = isEditing(order.order_num, field);
                         const isLast = fi === EDITABLE_FIELDS.length - 1;
+                        const isSmall =
+                          field === "recipient_name" || field === "recipient_email";
 
                         return (
                           <td
@@ -845,13 +854,13 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                                     cancelEdit();
                                   }
                                 }}
-                                className="w-full rounded border border-emerald-400 bg-white px-1 py-0.5 text-sm text-zinc-900 outline-none focus:ring-1 focus:ring-emerald-400 dark:bg-zinc-900 dark:text-zinc-100"
+                                className={`w-full rounded border border-emerald-400 bg-white px-1 py-0.5 text-zinc-900 outline-none focus:ring-1 focus:ring-emerald-400 dark:bg-zinc-900 dark:text-zinc-100 ${isSmall ? "text-xs" : "text-sm"}`}
                                 placeholder={FIELD_LABELS[field]}
                               />
                             ) : (
                               <button type="button" className={cellBtn}>
                                 <span
-                                  className={raw.trim() ? "" : "text-zinc-400 dark:text-zinc-600"}
+                                  className={`${isSmall ? "text-xs" : ""} ${raw.trim() ? "" : "text-zinc-400 dark:text-zinc-600"}`}
                                 >
                                   {raw.trim() ? raw : FIELD_LABELS[field]}
                                 </span>
