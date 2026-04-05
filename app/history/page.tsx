@@ -1,16 +1,21 @@
 import { getOrderHistory } from "@/lib/actions/order-history";
+import { HISTORY_FIELD_LABELS } from "@/lib/constants/history-labels";
 import Link from "next/link";
+import { HistoryRefreshButton } from "@/components/history-refresh-button";
 
 export default async function HistoryPage() {
   const history = await getOrderHistory();
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">변경 이력</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          총 {history.length}건
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">변경 이력</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            총 {history.length}건
+          </p>
+        </div>
+        <HistoryRefreshButton />
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
@@ -54,7 +59,9 @@ export default async function HistoryPage() {
                       {row.order_num}
                     </Link>
                   </td>
-                  <td className="px-4 py-2.5 text-zinc-700 dark:text-zinc-300">{row.field}</td>
+                  <td className="px-4 py-2.5 text-zinc-700 dark:text-zinc-300">
+                    {HISTORY_FIELD_LABELS[row.field] ?? row.field}
+                  </td>
                   <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400">{row.old_value ?? "—"}</td>
                   <td className="px-4 py-2.5 font-medium text-zinc-900 dark:text-zinc-100">{row.new_value ?? "—"}</td>
                   <td className="px-4 py-2.5">

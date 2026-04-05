@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 
 export type OrderHistoryRow = {
   id: string;
@@ -20,13 +21,15 @@ export async function logOrderHistory(
   changedBy: string = "수동"
 ): Promise<void> {
   const supabase = await createClient();
-  await supabase.from("order_history").insert({
+  const { error } = await supabase.from("order_history").insert({
     order_num: orderNum,
     field,
     old_value: oldValue,
     new_value: newValue,
     changed_by: changedBy,
   });
+  if (error) throw new Error(error.message);
+  revalidatePath("/history");
 }
 
 export async function getOrderHistory(orderNum?: string): Promise<OrderHistoryRow[]> {
