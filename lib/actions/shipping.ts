@@ -15,6 +15,7 @@ export type ShippingInfoRow = {
   city: string | null;
   address: string | null;
   customs_number: string | null;
+  downloaded: boolean;
 };
 
 export type OrderForShipping = {
@@ -59,7 +60,7 @@ export async function getOrdersForShipping(): Promise<OrderForShipping[]> {
     supabase
       .from("shipping_info")
       .select(
-        "order_num, recipient_name, recipient_phone, recipient_email, zip_code, region, city, address, customs_number"
+        "order_num, recipient_name, recipient_phone, recipient_email, zip_code, region, city, address, customs_number, downloaded"
       ),
   ]);
 
@@ -141,7 +142,7 @@ export async function getShippingExportRows(): Promise<ShippingExportRow[]> {
     supabase
       .from("shipping_info")
       .select(
-        "order_num, recipient_name, recipient_phone, recipient_email, zip_code, region, city, address, customs_number"
+        "order_num, recipient_name, recipient_phone, recipient_email, zip_code, region, city, address, customs_number, downloaded"
       ),
   ]);
 
@@ -159,28 +160,127 @@ export async function getShippingExportRows(): Promise<ShippingExportRow[]> {
     shippingByOrder.set(row.order_num, row as ShippingInfoRow);
   }
 
-  return (itemsResult.data ?? []).map((item) => {
-    const order = ordersByNum.get(item.order_num);
-    const shipping = shippingByOrder.get(item.order_num) ?? null;
-    return {
-      order_num: item.order_num,
-      date: order?.date ?? "",
-      product_name: item.product_name,
-      product_type: item.product_type,
-      product_option: item.product_option,
-      brand: item.brand,
-      quantity: item.quantity,
-      price_rub: item.price_rub,
-      krw: item.krw,
-      unit_price_usd: item.unit_price_usd,
-      recipient_name: shipping?.recipient_name ?? null,
-      recipient_phone: shipping?.recipient_phone ?? null,
-      recipient_email: shipping?.recipient_email ?? null,
-      zip_code: shipping?.zip_code ?? null,
-      region: shipping?.region ?? null,
-      city: shipping?.city ?? null,
-      address: shipping?.address ?? null,
-      customs_number: shipping?.customs_number ?? null,
-    };
+  return (itemsResult.data ?? [])
+    .filter((item) => {
+      const shipping = shippingByOrder.get(item.order_num);
+      return shipping && shipping.recipient_name?.trim() && !shipping.downloaded;
+    })
+    .map((item) => {
+      const order = ordersByNum.get(item.order_num);
+      const shipping = shippingByOrder.get(item.order_num) ?? null;
+      return {
+        order_num: item.order_num,
+        date: order?.date ?? "",
+        product_name: item.product_name,
+        product_type: item.product_type,
+        product_option: item.product_option,
+        brand: item.brand,
+        quantity: item.quantity,
+        price_rub: item.price_rub,
+        krw: item.krw,
+        unit_price_usd: item.unit_price_usd,
+        recipient_name: shipping?.recipient_name ?? null,
+        recipient_phone: shipping?.recipient_phone ?? null,
+        recipient_email: shipping?.recipient_email ?? null,
+        zip_code: shipping?.zip_code ?? null,
+        region: shipping?.region ?? null,
+        city: shipping?.city ?? null,
+        address: shipping?.address ?? null,
+        customs_number: shipping?.customs_number ?? null,
+      };
+    });
+}
+
+export async function toggleDownloadedAction(
+  orderNum: string,
+  downloaded: boolean
+): Promise<ActionState> {
+  const supabase = await createClient();
+  const { error: authError } = await supabase.auth.getUser();
+  if (authError) return { error: authError.message };
+
+  // shipping_info downloaded 업데이트
+  const { error: shippingError } = await supabase
+    .from("shipping_info")
+    .upsert({ order_num: orderNum, downloaded }, { onConflict: "order_num" });
+
+  if (shippingError) return { error: shippingError.message };
+
+  // orders progress 업데이트
+  const newProgress = downloaded ? "IN DELIVERY" : "PROBLEM";
+
+  // 현재 progress 조회 (히스토리용)
+  const { data: orderData } = await supabase
+    .from("orders")
+    .select("progress")
+    .eq("order_num", orderNum)
+    .maybeSingle();
+
+  const oldProgress = orderData?.progress ?? null;
+
+  const { error: orderError } = await supabase
+    .from("orders")
+    .update({ progress: newProgress })
+    .eq("order_num", orderNum);
+
+  if (orderError) return { error: orderError.message };
+
+  // 히스토리 기록
+  await supabase.from("order_history").insert({
+    order_num: orderNum,
+    field: "progress",
+    old_value: oldProgress,
+    new_value: newProgress,
+    changed_by: "자동변경",
   });
+
+  revalidatePath("/shipping");
+  revalidatePath("/orders");
+  return { ok: downloaded ? "IN DELIVERY로 변경됐습니다." : "PROBLEM으로 변경됐습니다." };
+}
+
+export async function markShippingDownloadedAction(
+  orderNums: string[]
+): Promise<ActionState> {
+  if (orderNums.length === 0) return { ok: "다운로드할 항목이 없습니다." };
+
+  const supabase = await createClient();
+  const { error: authError } = await supabase.auth.getUser();
+  if (authError) return { error: authError.message };
+
+  // shipping_info downloaded = true 업데이트
+  const { error: shippingError } = await supabase
+    .from("shipping_info")
+    .update({ downloaded: true })
+    .in("order_num", orderNums);
+
+  if (shippingError) return { error: shippingError.message };
+
+  // orders progress → IN DELIVERY 업데이트 + 히스토리 기록
+  for (const orderNum of orderNums) {
+    const { data: orderData } = await supabase
+      .from("orders")
+      .select("progress")
+      .eq("order_num", orderNum)
+      .maybeSingle();
+
+    const oldProgress = orderData?.progress ?? null;
+
+    await supabase
+      .from("orders")
+      .update({ progress: "IN DELIVERY" })
+      .eq("order_num", orderNum);
+
+    await supabase.from("order_history").insert({
+      order_num: orderNum,
+      field: "progress",
+      old_value: oldProgress,
+      new_value: "IN DELIVERY",
+      changed_by: "자동변경",
+    });
+  }
+
+  revalidatePath("/shipping");
+  revalidatePath("/orders");
+  return { ok: `${orderNums.length}건 IN DELIVERY로 변경됐습니다.` };
 }

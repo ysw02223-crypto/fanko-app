@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { getShippingExportRows } from "@/lib/actions/shipping";
+import { getShippingExportRows, markShippingDownloadedAction } from "@/lib/actions/shipping";
 
 const HS_CODE: Record<string, string> = {
   Cosmetic: "3304999000",
@@ -10,6 +10,10 @@ const HS_CODE: Record<string, string> = {
 
 export async function GET(req: NextRequest) {
   const rows = await getShippingExportRows();
+
+  if (rows.length === 0) {
+    return NextResponse.json({ error: "다운로드할 항목이 없습니다." }, { status: 404 });
+  }
 
   // public/ 파일을 HTTP fetch로 읽기 (fs 불필요, Vercel 서버리스에서 안정적)
   const { origin } = new URL(req.url);
@@ -72,6 +76,9 @@ export async function GET(req: NextRequest) {
   });
 
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+  const orderNums = [...new Set(rows.map((r) => r.order_num))];
+  await markShippingDownloadedAction(orderNums);
 
   const today = new Date().toISOString().slice(0, 10);
   return new NextResponse(buffer, {
