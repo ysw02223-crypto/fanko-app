@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { syncOrderProgressFromItemsAction } from "@/lib/actions/shipping";
 import {
   flattenOrders,
   replaceOrderSegment,
@@ -566,6 +567,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         showError(`저장 실패: ${error.message}`);
         setEditing(null);
         return;
+      }
+      // progress가 IN DELIVERY로 변경되면 orders.progress 동기화
+      if (field === "progress" && value === "IN DELIVERY") {
+        await syncOrderProgressFromItemsAction(orderNum);
       }
       await fetchOrders();
       pushHistory({

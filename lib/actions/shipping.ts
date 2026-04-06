@@ -340,3 +340,55 @@ export async function markShippingDownloadedAction(
   revalidatePath("/orders");
   return { ok: `${orderNums.length}건 IN DELIVERY로 변경됐습니다.` };
 }
+
+export async function syncOrderProgressFromItemsAction(
+  orderNum: string
+): Promise<ActionState> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  // 해당 주문의 모든 아이템 progress 조회
+  const { data: items, error: itemsError } = await supabase
+    .from("order_items")
+    .select("progress")
+    .eq("order_num", orderNum);
+
+  if (itemsError) return { error: itemsError.message };
+  if (!items || items.length === 0) return null;
+
+  // 전체 아이템이 모두 IN DELIVERY일 때만 동기화
+  const allInDelivery = items.every((item) => item.progress === "IN DELIVERY");
+  if (!allInDelivery) return null;
+
+  // 현재 orders.progress 조회 (이미 IN DELIVERY면 스킵)
+  const { data: orderData } = await supabase
+    .from("orders")
+    .select("progress")
+    .eq("order_num", orderNum)
+    .maybeSingle();
+
+  const oldProgress = orderData?.progress ?? null;
+  if (oldProgress === "IN DELIVERY") return null;
+
+  // orders.progress 업데이트
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({ progress: "IN DELIVERY" })
+    .eq("order_num", orderNum);
+
+  if (updateError) return { error: updateError.message };
+
+  // 히스토리 기록
+  await supabase.from("order_history").insert({
+    order_num: orderNum,
+    field: "progress",
+    old_value: oldProgress,
+    new_value: "IN DELIVERY",
+    changed_by: "자동변경",
+  });
+
+  revalidatePath("/shipping");
+  revalidatePath("/orders");
+  return { ok: "주문 상태가 IN DELIVERY로 자동 변경됐습니다." };
+}
