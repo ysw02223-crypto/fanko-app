@@ -240,7 +240,18 @@ export async function toggleDownloadedAction(
   if (orderError) return { error: orderError.message };
   if (!updatedOrder) return { error: "업데이트된 항목을 찾을 수 없습니다." };
 
-  // 히스토리 기록
+  // order_items.progress도 동일하게 업데이트
+  const { data: itemsData } = await supabase
+    .from("order_items")
+    .select("id, progress")
+    .eq("order_num", orderNum);
+
+  await supabase
+    .from("order_items")
+    .update({ progress: newProgress })
+    .eq("order_num", orderNum);
+
+  // 히스토리 기록 (orders.progress)
   await supabase.from("order_history").insert({
     order_num: orderNum,
     field: "progress",
@@ -248,6 +259,19 @@ export async function toggleDownloadedAction(
     new_value: newProgress,
     changed_by: "자동변경",
   });
+
+  // 히스토리 기록 (order_items.progress 각 항목)
+  if (itemsData && itemsData.length > 0) {
+    await supabase.from("order_history").insert(
+      itemsData.map((item) => ({
+        order_num: orderNum,
+        field: "items_progress",
+        old_value: item.progress ?? null,
+        new_value: newProgress,
+        changed_by: "자동변경",
+      }))
+    );
+  }
 
   revalidatePath("/shipping");
   revalidatePath("/orders");
@@ -278,6 +302,18 @@ export async function markShippingDownloadedAction(
       .update({ progress: "IN DELIVERY" })
       .eq("order_num", orderNum);
 
+    // order_items.progress도 동일하게 업데이트
+    const { data: itemsData } = await supabase
+      .from("order_items")
+      .select("id, progress")
+      .eq("order_num", orderNum);
+
+    await supabase
+      .from("order_items")
+      .update({ progress: "IN DELIVERY" })
+      .eq("order_num", orderNum);
+
+    // 히스토리 기록 (orders.progress)
     await supabase.from("order_history").insert({
       order_num: orderNum,
       field: "progress",
@@ -285,6 +321,19 @@ export async function markShippingDownloadedAction(
       new_value: "IN DELIVERY",
       changed_by: "자동변경",
     });
+
+    // 히스토리 기록 (order_items.progress 각 항목)
+    if (itemsData && itemsData.length > 0) {
+      await supabase.from("order_history").insert(
+        itemsData.map((item) => ({
+          order_num: orderNum,
+          field: "items_progress",
+          old_value: item.progress ?? null,
+          new_value: "IN DELIVERY",
+          changed_by: "자동변경",
+        }))
+      );
+    }
   }
 
   revalidatePath("/shipping");

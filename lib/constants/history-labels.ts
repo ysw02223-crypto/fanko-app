@@ -1,5 +1,6 @@
 export const HISTORY_FIELD_LABELS: Record<string, string> = {
   progress: "진행 상태",
+  items_progress: "진행 상태 (아이템)",
   order_type: "주문 유형",
   krw: "원화매입",
   price_rub: "판매가(루블)",
