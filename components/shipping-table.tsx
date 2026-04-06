@@ -198,6 +198,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const barInputRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
+  const togglingRef = useRef(false);
 
   // ── 초기화 effects ──────────────────────────────────────────────────────────
 
@@ -474,23 +475,33 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
   // ── 다운로드 토글 ────────────────────────────────────────────────────────────
 
   const handleDownloadToggle = useCallback(async (orderNum: string, checked: boolean) => {
+    if (togglingRef.current) return;
+    togglingRef.current = true;
     // 낙관적 업데이트: progress 반영
     const newProgress = checked ? "IN DELIVERY" : "PROBLEM";
     setOrders((prev) =>
       prev.map((o) => o.order_num === orderNum ? { ...o, progress: newProgress } : o)
     );
-    const result = await toggleDownloadedAction(orderNum, checked);
-    if (result?.error) {
-      setToast(result.error);
-      // 롤백
-      setOrders((prev) =>
-        prev.map((o) => o.order_num === orderNum ? { ...o, progress: checked ? "PROBLEM" : "IN DELIVERY" } : o)
-      );
-    } else {
-      if (result?.ok) setToast(result.ok);
-      await refetchOrders();
+    try {
+      const result = await toggleDownloadedAction(orderNum, checked);
+      if (result?.error) {
+        setToast(result.error);
+        // 롤백: 낙관적 업데이트 되돌리기
+        setOrders((prev) =>
+          prev.map((o) => o.order_num === orderNum ? { ...o, progress: checked ? "PROBLEM" : "IN DELIVERY" } : o)
+        );
+      } else {
+        if (result?.ok) setToast(result.ok);
+        // refetchOrders() 대신 서버에서 확정된 값으로 상태 업데이트
+        const confirmed = result?.confirmedProgress ?? newProgress;
+        setOrders((prev) =>
+          prev.map((o) => o.order_num === orderNum ? { ...o, progress: confirmed } : o)
+        );
+      }
+    } finally {
+      togglingRef.current = false;
     }
-  }, [refetchOrders]);
+  }, []);
 
   // ── 엑셀 다운로드 ────────────────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export type ActionState = { error?: string; ok?: string } | null;
+export type ActionState = { error?: string; ok?: string; confirmedProgress?: string } | null;
 
 export type ShippingInfoRow = {
   order_num: string;
@@ -97,8 +97,8 @@ export async function upsertShippingInfoAction(
 ): Promise<ActionState> {
   const supabase = await createClient();
 
-  const { error: authError } = await supabase.auth.getUser();
-  if (authError) return { error: authError.message };
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
 
   const parseField = (key: string): string | null => {
     const val = formData.get(key);
@@ -215,8 +215,8 @@ export async function toggleDownloadedAction(
   downloaded: boolean
 ): Promise<ActionState> {
   const supabase = await createClient();
-  const { error: authError } = await supabase.auth.getUser();
-  if (authError) return { error: authError.message };
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
 
   // orders progress 업데이트
   const newProgress = downloaded ? "IN DELIVERY" : "PROBLEM";
@@ -230,12 +230,15 @@ export async function toggleDownloadedAction(
 
   const oldProgress = orderData?.progress ?? null;
 
-  const { error: orderError } = await supabase
+  const { data: updatedOrder, error: orderError } = await supabase
     .from("orders")
     .update({ progress: newProgress })
-    .eq("order_num", orderNum);
+    .eq("order_num", orderNum)
+    .select("progress")
+    .single();
 
   if (orderError) return { error: orderError.message };
+  if (!updatedOrder) return { error: "업데이트된 항목을 찾을 수 없습니다." };
 
   // 히스토리 기록
   await supabase.from("order_history").insert({
@@ -248,7 +251,7 @@ export async function toggleDownloadedAction(
 
   revalidatePath("/shipping");
   revalidatePath("/orders");
-  return { ok: downloaded ? "IN DELIVERY로 변경됐습니다." : "PROBLEM으로 변경됐습니다." };
+  return { ok: downloaded ? "IN DELIVERY로 변경됐습니다." : "PROBLEM으로 변경됐습니다.", confirmedProgress: updatedOrder.progress };
 }
 
 export async function markShippingDownloadedAction(
@@ -257,8 +260,8 @@ export async function markShippingDownloadedAction(
   if (orderNums.length === 0) return { ok: "다운로드할 항목이 없습니다." };
 
   const supabase = await createClient();
-  const { error: authError } = await supabase.auth.getUser();
-  if (authError) return { error: authError.message };
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
 
   // orders progress → IN DELIVERY 업데이트 + 히스토리 기록
   for (const orderNum of orderNums) {
