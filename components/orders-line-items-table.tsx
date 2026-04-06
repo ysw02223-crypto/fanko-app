@@ -812,41 +812,54 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         }
         await fetchOrders();
 
-        // krw 저장 성공 후 PAY → BUY IN KOREA 자동 트리거
+        // krw 저장 성공 후 PAY → BUY IN KOREA 자동 트리거 (해당 아이템만)
         if (field === "krw" && newRaw.trim() !== "") {
-          const { data: orderData } = await supabase
-            .from("orders")
-            .select("progress")
-            .eq("order_num", orderNum)
-            .maybeSingle();
-
-          if (orderData?.progress === "PAY") {
-            await supabase
-              .from("orders")
-              .update({ progress: "BUY IN KOREA" })
-              .eq("order_num", orderNum);
-
+          const itemBefore2 = itemBefore;
+          if (itemBefore2.progress === "PAY" || itemBefore2.progress === null) {
+            // 해당 아이템만 BUY IN KOREA로 변경
             await supabase
               .from("order_items")
               .update({ progress: "BUY IN KOREA" })
+              .eq("id", itemId);
+
+            await supabase.from("order_history").insert({
+              order_num: orderNum,
+              field: "items_progress",
+              old_value: itemBefore2.progress ?? null,
+              new_value: "BUY IN KOREA",
+              changed_by: "자동변경",
+            });
+
+            // 전체 아이템이 모두 BUY IN KOREA면 orders.progress도 동기화
+            const { data: allItems } = await supabase
+              .from("order_items")
+              .select("progress")
               .eq("order_num", orderNum);
 
-            await supabase.from("order_history").insert([
-              {
-                order_num: orderNum,
-                field: "progress",
-                old_value: "PAY",
-                new_value: "BUY IN KOREA",
-                changed_by: "자동변경",
-              },
-              {
-                order_num: orderNum,
-                field: "items_progress",
-                old_value: "PAY",
-                new_value: "BUY IN KOREA",
-                changed_by: "자동변경",
-              },
-            ]);
+            const allBuyInKorea = allItems?.every((i) => i.progress === "BUY IN KOREA") ?? false;
+            if (allBuyInKorea) {
+              const { data: orderData } = await supabase
+                .from("orders")
+                .select("progress")
+                .eq("order_num", orderNum)
+                .maybeSingle();
+
+              const oldOrderProgress = orderData?.progress ?? null;
+              if (oldOrderProgress !== "BUY IN KOREA") {
+                await supabase
+                  .from("orders")
+                  .update({ progress: "BUY IN KOREA" })
+                  .eq("order_num", orderNum);
+
+                await supabase.from("order_history").insert({
+                  order_num: orderNum,
+                  field: "progress",
+                  old_value: oldOrderProgress,
+                  new_value: "BUY IN KOREA",
+                  changed_by: "자동변경",
+                });
+              }
+            }
 
             // 상태 변경 반영을 위해 목록 재조회
             await fetchOrders();
