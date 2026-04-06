@@ -826,13 +826,27 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               .update({ progress: "BUY IN KOREA" })
               .eq("order_num", orderNum);
 
-            await supabase.from("order_history").insert({
-              order_num: orderNum,
-              field: "progress",
-              old_value: "PAY",
-              new_value: "BUY IN KOREA",
-              changed_by: "자동변경",
-            });
+            await supabase
+              .from("order_items")
+              .update({ progress: "BUY IN KOREA" })
+              .eq("order_num", orderNum);
+
+            await supabase.from("order_history").insert([
+              {
+                order_num: orderNum,
+                field: "progress",
+                old_value: "PAY",
+                new_value: "BUY IN KOREA",
+                changed_by: "자동변경",
+              },
+              {
+                order_num: orderNum,
+                field: "items_progress",
+                old_value: "PAY",
+                new_value: "BUY IN KOREA",
+                changed_by: "자동변경",
+              },
+            ]);
 
             // 상태 변경 반영을 위해 목록 재조회
             await fetchOrders();
