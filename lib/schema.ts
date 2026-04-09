@@ -40,6 +40,10 @@ export type OrderRow = {
   purchase_channel: string | null;
   created_at: string;
   updated_at: string;
+  // 배송 데이터 (엑셀 import)
+  shipping_fee: number | null;
+  applied_weight: number | null;
+  tracking_number: string | null;
 };
 
 export type OrderItemRow = {

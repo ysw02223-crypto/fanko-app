@@ -34,6 +34,12 @@ type HistoryEntry = {
   revert: () => Promise<void>;
 };
 
+type FillDragState = {
+  startRowIdx: number;
+  field: ShippingEditableField;
+  value: string;
+};
+
 type ShippingOrder = OrderForShipping;
 
 export type ShippingTableProps = {
@@ -181,6 +187,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const [draft, setDraft] = useState("");
   const [editBaseline, setEditBaseline] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"error" | "success">("error");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [undoingId, setUndoingId] = useState<string | null>(null);
@@ -199,6 +206,19 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const barInputRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
   const togglingRef = useRef(false);
+
+  // Blur-safe 저장을 위한 ref (stale closure 방지)
+  const editingRef = useRef<EditTarget | null>(null);
+  const draftRef = useRef<string>("");
+  const editBaselineRef = useRef<string>("");
+
+  // Fill drag state
+  const [fillDrag, setFillDrag] = useState<FillDragState | null>(null);
+  const [fillPreview, setFillPreview] = useState<{ startIdx: number; endIdx: number } | null>(null);
+  const fillDragRef = useRef<FillDragState | null>(null);
+  const fillPreviewRef = useRef<{ startIdx: number; endIdx: number } | null>(null);
+  // filteredOrders를 ref로 유지 (batchFillShipping 클로저에서 최신값 참조)
+  const filteredOrdersRef = useRef<ShippingOrder[]>([]);
 
   // ── 초기화 effects ──────────────────────────────────────────────────────────
 
@@ -222,10 +242,15 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // 테이블 외부 클릭 시 focusedCell 닫힘
+  // 테이블 외부 클릭 시 focusedCell 닫힘 + 미저장 편집 flush
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        const outgoing = editingRef.current;
+        if (outgoing !== null && draftRef.current !== editBaselineRef.current) {
+          void saveFieldRef.current(outgoing.orderNum, outgoing.field, draftRef.current, editBaselineRef.current);
+        }
+        editingRef.current = null;
         setFocusedCell(null);
         setEditing(null);
       }
@@ -253,7 +278,8 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
 
     const blocksScrollDragStart = (target: EventTarget | null) => {
       const t = target as HTMLElement | null;
-      return Boolean(t?.closest("input, select, textarea"));
+      if (!t) return false;
+      return Boolean(t.closest("input, select, textarea, [data-fill-handle]"));
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -360,7 +386,25 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
 
   // ── 데이터 헬퍼 ─────────────────────────────────────────────────────────────
 
-  const showError = useCallback((msg: string) => setToast(msg), []);
+  const showError = useCallback((msg: string) => {
+    setToastType("error");
+    setToast(msg);
+  }, []);
+
+  // 드래그 채우기 중 커서/선택 잠금
+  useEffect(() => {
+    if (fillDrag) {
+      document.body.style.cursor = "crosshair";
+      document.body.style.userSelect = "none";
+    } else {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [fillDrag]);
 
   const refetchOrders = useCallback(async () => {
     try {
@@ -472,6 +516,10 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     [orders, showError, refetchOrders, pushHistory],
   );
 
+  // outside-click useEffect의 [] dep 때문에 saveField 최신값을 ref로 유지
+  const saveFieldRef = useRef(saveField);
+  useEffect(() => { saveFieldRef.current = saveField; }, [saveField]);
+
   // ── 다운로드 토글 ────────────────────────────────────────────────────────────
 
   const handleDownloadToggle = useCallback(async (orderNum: string, checked: boolean) => {
@@ -532,21 +580,144 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     }
   }, [isDownloading, refetchOrders]);
 
+  // ── 드래그 채우기 ────────────────────────────────────────────────────────────
+
+  const onFillHandleMouseDown = useCallback(
+    (
+      e: React.MouseEvent,
+      rowIdx: number,
+      field: ShippingEditableField,
+      rawValue: string,
+    ) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // 현재 편집 중인 셀이 fill 소스 셀이라면 draft 값을 사용
+      const cur = editingRef.current;
+      const effectiveValue =
+        cur !== null && cur.field === field ? draftRef.current : rawValue;
+      const state: FillDragState = { startRowIdx: rowIdx, field, value: effectiveValue };
+      fillDragRef.current = state;
+      fillPreviewRef.current = { startIdx: rowIdx, endIdx: rowIdx };
+      setFillDrag(state);
+      setFillPreview({ startIdx: rowIdx, endIdx: rowIdx });
+    },
+    [],
+  );
+
+  const batchFillShipping = useCallback(
+    async (drag: FillDragState, startIdx: number, endIdx: number) => {
+      const supabase = createClient();
+      const rowsToFill = filteredOrdersRef.current.slice(startIdx, endIdx + 1);
+      const targets = rowsToFill.filter((_, i) => startIdx + i !== drag.startRowIdx);
+      if (targets.length === 0) return;
+
+      let successCount = 0;
+      const newVal = drag.value.trim() === "" ? null : drag.value.trim();
+
+      for (const order of targets) {
+        const currentShipping = order.shipping;
+        const payload = {
+          order_num: order.order_num,
+          recipient_name: currentShipping?.recipient_name ?? null,
+          recipient_phone: currentShipping?.recipient_phone ?? null,
+          recipient_email: currentShipping?.recipient_email ?? null,
+          zip_code: currentShipping?.zip_code ?? null,
+          region: currentShipping?.region ?? null,
+          city: currentShipping?.city ?? null,
+          address: currentShipping?.address ?? null,
+          customs_number: currentShipping?.customs_number ?? null,
+          [drag.field]: newVal,
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await supabase
+          .from("shipping_info")
+          .upsert(payload, { onConflict: "order_num" });
+        if (!error) successCount++;
+      }
+
+      const fresh = await fetchShippingOrders();
+      setOrders(fresh);
+      setToastType("success");
+      setToast(`${successCount}개 행에 값이 채워졌습니다.`);
+    },
+    [],
+  );
+
+  // 드래그 채우기 글로벌 이벤트
+  useEffect(() => {
+    if (!fillDrag) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const tr = el?.closest("[data-row-idx]") as HTMLElement | null;
+      if (!tr) return;
+      const idx = Number(tr.dataset.rowIdx);
+      if (!Number.isFinite(idx)) return;
+      const start = Math.min(fillDragRef.current!.startRowIdx, idx);
+      const end = Math.max(fillDragRef.current!.startRowIdx, idx);
+      fillPreviewRef.current = { startIdx: start, endIdx: end };
+      setFillPreview({ startIdx: start, endIdx: end });
+    };
+
+    const onMouseUp = () => {
+      const drag = fillDragRef.current;
+      const preview = fillPreviewRef.current;
+      fillDragRef.current = null;
+      fillPreviewRef.current = null;
+      setFillDrag(null);
+      setFillPreview(null);
+      if (!drag || !preview || preview.startIdx === preview.endIdx) return;
+      void batchFillShipping(drag, preview.startIdx, preview.endIdx);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        fillDragRef.current = null;
+        fillPreviewRef.current = null;
+        setFillDrag(null);
+        setFillPreview(null);
+      }
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [fillDrag, batchFillShipping]);
+
   // ── 편집 헬퍼 ───────────────────────────────────────────────────────────────
 
   const startEdit = (orderNum: string, field: ShippingEditableField, current: string) => {
+    // 이전 편집이 아직 저장 안 됐으면 flush
+    const outgoing = editingRef.current;
+    if (outgoing !== null && draftRef.current !== editBaselineRef.current) {
+      void saveFieldRef.current(outgoing.orderNum, outgoing.field, draftRef.current, editBaselineRef.current);
+    }
+    editingRef.current = { orderNum, field };
+    editBaselineRef.current = current;
+    draftRef.current = current;
     setEditing({ orderNum, field });
     setFocusedCell({ orderNum, field });
     setDraft(current);
     setEditBaseline(current);
   };
 
-  const cancelEdit = () => setEditing(null); // focusedCell 유지
+  const cancelEdit = () => {
+    editingRef.current = null;
+    setEditing(null);
+  }; // focusedCell 유지
 
   const finishEdit = async (orderNum: string, field: ShippingEditableField) => {
     if (editing?.orderNum !== orderNum || editing?.field !== field) return;
     const ok = await saveField(orderNum, field, draft, editBaseline);
-    if (ok) setEditing(null); // focusedCell 유지
+    if (ok) {
+      editingRef.current = null;
+      setEditing(null); // focusedCell 유지
+    }
   };
 
   const isEditing = (orderNum: string, field: ShippingEditableField) =>
@@ -600,6 +771,33 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const doneCount = useMemo(() => orders.filter(isComplete).length, [orders]);
   const todoCount = orders.length - doneCount;
 
+  // filteredOrdersRef 동기화
+  filteredOrdersRef.current = filteredOrders;
+
+  /** 드래그 채우기 하이라이트 여부 */
+  const isFillHighlight = (rowIdx: number, field: ShippingEditableField) =>
+    fillPreview !== null &&
+    fillDrag?.field === field &&
+    rowIdx >= fillPreview.startIdx &&
+    rowIdx <= fillPreview.endIdx;
+
+  /** fill handle span */
+  const FillHandle = ({
+    rowIdx,
+    field,
+    rawValue,
+  }: {
+    rowIdx: number;
+    field: ShippingEditableField;
+    rawValue: string;
+  }) => (
+    <span
+      data-fill-handle="true"
+      onMouseDown={(e) => onFillHandleMouseDown(e, rowIdx, field, rawValue)}
+      className="absolute bottom-0 right-0 z-20 h-2.5 w-2.5 cursor-crosshair border border-white bg-blue-500 dark:border-zinc-900 dark:bg-blue-400"
+    />
+  );
+
   // ── 렌더 ────────────────────────────────────────────────────────────────────
 
   return (
@@ -607,7 +805,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
       {/* Toast */}
       {toast && (
         <div
-          className="fixed bottom-4 right-4 z-[100] max-w-md rounded-lg bg-red-600 px-4 py-3 text-sm text-white shadow-lg"
+          className={`fixed bottom-4 right-4 z-[100] max-w-md rounded-lg px-4 py-3 text-sm text-white shadow-lg ${toastType === "success" ? "bg-emerald-600" : "bg-red-600"}`}
           role="alert"
         >
           {toast}
@@ -852,10 +1050,15 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                 <input
                   ref={barInputRef}
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
                   onBlur={(e) => {
                     if (e.relatedTarget === inputRef.current) return;
-                    void finishEdit(focusedCell.orderNum, focusedCell.field);
+                    const cur = editingRef.current;
+                    if (!cur) return;
+                    const d = draftRef.current;
+                    const b = editBaselineRef.current;
+                    editingRef.current = null;
+                    void saveField(cur.orderNum, cur.field, d, b);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") { e.preventDefault(); void finishEdit(focusedCell.orderNum, focusedCell.field); }
@@ -914,7 +1117,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                   const s = order.shipping;
 
                   return (
-                    <tr key={order.order_num} className={`${rowBg} hover:brightness-95`}>
+                    <tr key={order.order_num} data-row-idx={idx} className={`${rowBg} hover:brightness-95`}>
                       {/* # */}
                       <td className={`${tdBase} text-center text-xs text-zinc-400`}>
                         {idx + 1}
@@ -957,11 +1160,13 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                         const isSmall =
                           field === "recipient_name" || field === "recipient_email";
                         const missing = !active && isMissingField(order.shipping, field);
+                        const isFocused = focusedCell?.orderNum === order.order_num && focusedCell?.field === field;
+                        const highlight = isFillHighlight(idx, field);
 
                         return (
                           <td
                             key={field}
-                            className={`${tdBase} ${active ? editingBg : missing ? "bg-amber-50 dark:bg-amber-950/30" : ""} ${isLast ? "border-r-0" : ""} ${missing ? "border-amber-300 dark:border-amber-700" : ""}`}
+                            className={`${tdBase} relative ${active ? editingBg : highlight ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : missing ? "bg-amber-50 dark:bg-amber-950/30" : ""} ${isLast ? "border-r-0" : ""} ${missing && !highlight ? "border-amber-300 dark:border-amber-700" : ""}`}
                             onClick={() => {
                               if (!active) startEdit(order.order_num, field, raw);
                             }}
@@ -970,10 +1175,15 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                               <input
                                 ref={inputRef}
                                 value={draft}
-                                onChange={(e) => setDraft(e.target.value)}
+                                onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
                                 onBlur={(e) => {
                                   if (e.relatedTarget === barInputRef.current) return;
-                                  void finishEdit(order.order_num, field);
+                                  const cur = editingRef.current;
+                                  if (!cur || cur.orderNum !== order.order_num || cur.field !== field) return;
+                                  const d = draftRef.current;
+                                  const b = editBaselineRef.current;
+                                  editingRef.current = null;
+                                  void saveField(cur.orderNum, cur.field, d, b);
                                 }}
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") {
@@ -996,6 +1206,9 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                                   {raw.trim() ? raw : FIELD_LABELS[field]}
                                 </span>
                               </button>
+                            )}
+                            {isFocused && (
+                              <FillHandle rowIdx={idx} field={field} rawValue={raw} />
                             )}
                           </td>
                         );

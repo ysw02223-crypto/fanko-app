@@ -17,6 +17,7 @@ import {
   SET_TYPES,
   type OrderItemRow,
 } from "@/lib/schema";
+import { DeliveryImportButton } from "@/components/delivery-import-button";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -89,6 +90,13 @@ type HistoryEntry = {
   oldDisplay: string;
   newDisplay: string;
   revert: () => Promise<void>;
+};
+
+type FillDragState = {
+  startRowIdx: number;
+  field: ItemEditableField | OrderEditableField;
+  kind: "item" | "order";
+  value: string;
 };
 
 function progressBadgeClass(p: string) {
@@ -260,6 +268,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const [draft, setDraft] = useState<string>("");
   const [editBaseline, setEditBaseline] = useState<string>("");
   const [toast, setToast] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"error" | "success">("error");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [undoingId, setUndoingId] = useState<string | null>(null);
@@ -273,6 +282,17 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const barInputRef = useRef<HTMLInputElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
   const savingRef = useRef(false);
+
+  // Blur-safe 저장을 위한 ref (stale closure 방지)
+  const editingRef = useRef<EditTarget | null>(null);
+  const draftRef = useRef<string>("");
+  const editBaselineRef = useRef<string>("");
+
+  // Fill drag state
+  const [fillDrag, setFillDrag] = useState<FillDragState | null>(null);
+  const [fillPreview, setFillPreview] = useState<{ startIdx: number; endIdx: number } | null>(null);
+  const fillDragRef = useRef<FillDragState | null>(null);
+  const fillPreviewRef = useRef<{ startIdx: number; endIdx: number } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
@@ -335,6 +355,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     });
   }, [displayRows, searchQuery, filters]);
 
+  // filteredRowsRef — flushCurrentEdit에서 최신 row 접근용
+  const filteredRowsRef = useRef<Array<FlatOrderItemRow & { item: OrderItemRow }>>([]);
+  filteredRowsRef.current = filteredRows;
+
   useEffect(() => {
     setFlatRows(flattenOrders(initialOrders));
   }, [initialOrders]);
@@ -353,10 +377,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // 테이블 외부 클릭 시 focusedCell 닫힘
+  // 테이블 외부 클릭 시 focusedCell 닫힘 + 미저장 편집 flush
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        const outgoing = editingRef.current;
+        if (outgoing !== null && draftRef.current !== editBaselineRef.current) {
+          void flushCurrentEditRef.current(outgoing, draftRef.current, editBaselineRef.current);
+        }
+        editingRef.current = null;
         setFocusedCell(null);
         setEditing(null);
       }
@@ -391,7 +420,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     const blocksScrollDragStart = (target: EventTarget | null) => {
       const t = target as HTMLElement | null;
       if (!t) return false;
-      return Boolean(t.closest("input, select, textarea"));
+      return Boolean(t.closest("input, select, textarea, [data-fill-handle]"));
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -522,8 +551,24 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   }, [editing]);
 
   const showError = useCallback((msg: string) => {
+    setToastType("error");
     setToast(msg);
   }, []);
+
+  // 드래그 채우기 중 커서/선택 잠금
+  useEffect(() => {
+    if (fillDrag) {
+      document.body.style.cursor = "crosshair";
+      document.body.style.userSelect = "none";
+    } else {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [fillDrag]);
 
   /** 저장 후 전체 목록 재조회 — UI 업데이트(bug1) + 자연스러운 재정렬(bug2) */
   const fetchOrders = useCallback(async () => {
@@ -885,25 +930,179 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     [buildItemUpdates, fetchOrders, pushHistory, runItemRevertThenRefresh, showError],
   );
 
+  // ── Blur-safe flush (stale closure 방지) ────────────────────────────────────
+
+  const flushCurrentEdit = useCallback(
+    async (target: EditTarget, draftVal: string, baselineVal: string) => {
+      if (draftVal === baselineVal) return;
+      if (target.kind === "item") {
+        const row = filteredRowsRef.current.find((r) => r.item?.id === target.itemId);
+        if (!row?.item) return;
+        await saveItemField(target.itemId, target.orderNum, target.field, draftVal, baselineVal, row.item);
+      } else {
+        await saveOrderField(target.orderNum, target.field, draftVal, baselineVal);
+      }
+    },
+    [saveItemField, saveOrderField],
+  );
+  const flushCurrentEditRef = useRef(flushCurrentEdit);
+  useEffect(() => { flushCurrentEditRef.current = flushCurrentEdit; }, [flushCurrentEdit]);
+
+  // ── 드래그 채우기 핸들 ────────────────────────────────────────────────────────
+
+  const onFillHandleMouseDown = useCallback(
+    (
+      e: React.MouseEvent,
+      rowIdx: number,
+      field: ItemEditableField | OrderEditableField,
+      kind: "item" | "order",
+      rawValue: string,
+    ) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // 현재 편집 중인 셀이 fill 소스 셀이라면 draft 값을 사용
+      const cur = editingRef.current;
+      const effectiveValue =
+        cur !== null &&
+        cur.field === field &&
+        ((kind === "item" && cur.kind === "item") || (kind === "order" && cur.kind === "order"))
+          ? draftRef.current
+          : rawValue;
+      const state: FillDragState = { startRowIdx: rowIdx, field, kind, value: effectiveValue };
+      fillDragRef.current = state;
+      fillPreviewRef.current = { startIdx: rowIdx, endIdx: rowIdx };
+      setFillDrag(state);
+      setFillPreview({ startIdx: rowIdx, endIdx: rowIdx });
+    },
+    [],
+  );
+
+  const batchFill = useCallback(
+    async (drag: FillDragState, startIdx: number, endIdx: number) => {
+      const supabase = createClient();
+      const rowsToFill = filteredRows.slice(startIdx, endIdx + 1);
+      // 드래그 시작 셀은 이미 해당 값 → 제외
+      const targets = rowsToFill.filter((_, i) => startIdx + i !== drag.startRowIdx);
+      if (targets.length === 0) return;
+
+      let successCount = 0;
+
+      for (const row of targets) {
+        if (drag.kind === "item") {
+          const field = drag.field as ItemEditableField;
+          const built = buildItemUpdates(field, drag.value, row.item);
+          if ("error" in built) continue;
+          const { error } = await supabase
+            .from("order_items")
+            .update(built.updates)
+            .eq("id", row.item.id);
+          if (!error) {
+            successCount++;
+            if (field === "progress" && drag.value === "IN DELIVERY") {
+              await syncOrderProgressFromItemsAction(row.order.order_num);
+            }
+          }
+        } else {
+          const field = drag.field as OrderEditableField;
+          const built = buildOrderPayload(field, drag.value);
+          if ("error" in built) continue;
+          const { error } = await supabase
+            .from("orders")
+            .update(built.payload)
+            .eq("order_num", row.order.order_num);
+          if (!error) successCount++;
+        }
+      }
+
+      await fetchOrders();
+      setToastType("success");
+      setToast(`${successCount}개 행에 값이 채워졌습니다.`);
+    },
+    [filteredRows, buildItemUpdates, buildOrderPayload, fetchOrders],
+  );
+
+  // 드래그 채우기 글로벌 이벤트
+  useEffect(() => {
+    if (!fillDrag) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const tr = el?.closest("[data-row-idx]") as HTMLElement | null;
+      if (!tr) return;
+      const idx = Number(tr.dataset.rowIdx);
+      if (!Number.isFinite(idx)) return;
+      const start = Math.min(fillDragRef.current!.startRowIdx, idx);
+      const end = Math.max(fillDragRef.current!.startRowIdx, idx);
+      fillPreviewRef.current = { startIdx: start, endIdx: end };
+      setFillPreview({ startIdx: start, endIdx: end });
+    };
+
+    const onMouseUp = () => {
+      const drag = fillDragRef.current;
+      const preview = fillPreviewRef.current;
+      fillDragRef.current = null;
+      fillPreviewRef.current = null;
+      setFillDrag(null);
+      setFillPreview(null);
+      if (!drag || !preview || preview.startIdx === preview.endIdx) return;
+      void batchFill(drag, preview.startIdx, preview.endIdx);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        fillDragRef.current = null;
+        fillPreviewRef.current = null;
+        setFillDrag(null);
+        setFillPreview(null);
+      }
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [fillDrag, batchFill]);
+
   const startEdit = (target: EditTarget, current: string) => {
+    // 이전 편집이 아직 저장 안 됐으면 flush (다른 셀 클릭 시 stale closure 문제 해결)
+    const outgoing = editingRef.current;
+    if (outgoing !== null && draftRef.current !== editBaselineRef.current) {
+      void flushCurrentEditRef.current(outgoing, draftRef.current, editBaselineRef.current);
+    }
+    editingRef.current = target;
+    editBaselineRef.current = current;
+    draftRef.current = current;
     setEditing(target);
     setFocusedCell(target);
     setDraft(current);
     setEditBaseline(current);
   };
 
-  const cancelEdit = () => setEditing(null); // focusedCell 유지
+  const cancelEdit = () => {
+    editingRef.current = null;
+    setEditing(null);
+  }; // focusedCell 유지
 
   const finishOrderField = async (rowKey: string, orderNum: string, field: OrderEditableField) => {
     if (!editing || editing.kind !== "order" || editing.rowKey !== rowKey || editing.field !== field) return;
     const ok = await saveOrderField(orderNum, field, draft, editBaseline);
-    if (ok) setEditing(null); // focusedCell 유지
+    if (ok) {
+      editingRef.current = null;
+      setEditing(null); // focusedCell 유지
+    }
   };
 
   const finishItemField = async (itemId: string, field: ItemEditableField, item: OrderItemRow) => {
     if (!editing || editing.kind !== "item" || editing.itemId !== itemId || editing.field !== field) return;
     const ok = await saveItemField(itemId, editing.orderNum, field, draft, editBaseline, item);
-    if (ok) setEditing(null); // focusedCell 유지
+    if (ok) {
+      editingRef.current = null;
+      setEditing(null); // focusedCell 유지
+    }
   };
 
   const isEditingOrder = (rowKey: string, field: OrderEditableField) =>
@@ -939,6 +1138,33 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const lineCount = filteredRows.length;
   const orderCount = new Set(filteredRows.map((r) => r.order.order_num)).size;
   const hasActiveFilter = Object.values(filters).some(Boolean);
+
+  /** 드래그 채우기 하이라이트 여부 */
+  const isFillHighlight = (rowIdx: number, field: ItemEditableField | OrderEditableField, kind: "item" | "order") =>
+    fillPreview !== null &&
+    fillDrag?.field === field &&
+    fillDrag?.kind === kind &&
+    rowIdx >= fillPreview.startIdx &&
+    rowIdx <= fillPreview.endIdx;
+
+  /** fill handle span */
+  const FillHandle = ({
+    rowIdx,
+    field,
+    kind,
+    rawValue,
+  }: {
+    rowIdx: number;
+    field: ItemEditableField | OrderEditableField;
+    kind: "item" | "order";
+    rawValue: string;
+  }) => (
+    <span
+      data-fill-handle="true"
+      onMouseDown={(e) => onFillHandleMouseDown(e, rowIdx, field, kind, rawValue)}
+      className="absolute bottom-0 right-0 z-20 h-2.5 w-2.5 cursor-crosshair border border-white bg-blue-500 dark:border-zinc-900 dark:bg-blue-400"
+    />
+  );
 
   type FilterKey = keyof typeof filters;
   function FilterDropdown({
@@ -995,7 +1221,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     <>
       {toast ? (
         <div
-          className="fixed bottom-4 right-4 z-[100] max-w-md rounded-lg bg-red-600 px-4 py-3 text-sm text-white shadow-lg"
+          className={`fixed bottom-4 right-4 z-[100] max-w-md rounded-lg px-4 py-3 text-sm text-white shadow-lg ${toastType === "success" ? "bg-emerald-600" : "bg-red-600"}`}
           role="alert"
         >
           {toast}
@@ -1118,6 +1344,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                 초기화
               </button>
             )}
+            <DeliveryImportButton onImportDone={fetchOrders} />
             <input
               type="text"
               placeholder="주문번호·상품명·고객·옵션 검색…"
@@ -1144,7 +1371,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           <table
             ref={headerTableRef}
             className="min-w-full border-collapse text-left text-sm"
-            style={{ tableLayout: "fixed", width: "100%", minWidth: 1928 }}
+            style={{ tableLayout: "fixed", width: "100%", minWidth: 2208 }}
           >
             <colgroup>
               <col style={{ width: "32px" }} />
@@ -1167,6 +1394,9 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <col style={{ width: "88px" }} />
               <col style={{ width: "80px" }} />
               <col style={{ width: "72px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "120px" }} />
             </colgroup>
             <thead>
               <tr>
@@ -1189,7 +1419,10 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                 <th className={thClass}>판매가₽</th>
                 <th className={thClass}>원화매입</th>
                 <th className={thClass}>선결제₽</th>
-                <th className={`${thClass} border-r-0`}>잔금₽</th>
+                <th className={thClass}>잔금₽</th>
+                <th className={thClass}>배송비</th>
+                <th className={thClass}>적용무게</th>
+                <th className={`${thClass} border-r-0`}>배송번호</th>
               </tr>
             </thead>
           </table>
@@ -1255,8 +1488,21 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   <input
                     ref={barInputRef}
                     value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onBlur={(e) => { if (e.relatedTarget === inputRef.current) return; finishBar(); }}
+                    onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                    onBlur={(e) => {
+                      if (e.relatedTarget === inputRef.current) return;
+                      const cur = editingRef.current;
+                      if (!cur) return;
+                      const d = draftRef.current;
+                      const b = editBaselineRef.current;
+                      editingRef.current = null;
+                      if (cur.kind === "order") {
+                        void saveOrderField(cur.orderNum, cur.field, d, b);
+                      } else {
+                        const row = flatRows.find((r) => r.item?.id === cur.itemId);
+                        if (row?.item) void saveItemField(cur.itemId, cur.orderNum, cur.field, d, b, row.item);
+                      }
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") { e.preventDefault(); finishBar(); }
                       if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
@@ -1284,7 +1530,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         <div ref={tableRef} style={{ overflowX: "auto", overflowY: "visible" }}>
           <table
             className="min-w-full border-collapse text-left text-sm"
-            style={{ tableLayout: "fixed", width: "100%", minWidth: 1928 }}
+            style={{ tableLayout: "fixed", width: "100%", minWidth: 2208 }}
           >
             <colgroup>
               <col style={{ width: "32px" }} />
@@ -1307,6 +1553,9 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <col style={{ width: "88px" }} />
               <col style={{ width: "80px" }} />
               <col style={{ width: "72px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "120px" }} />
             </colgroup>
             <thead className="sr-only">
               <tr>
@@ -1329,13 +1578,16 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                 <th className={thClass}>판매가₽</th>
                 <th className={thClass}>원화매입</th>
                 <th className={thClass}>선결제₽</th>
-                <th className={`${thClass} border-r-0`}>잔금₽</th>
+                <th className={thClass}>잔금₽</th>
+                <th className={thClass}>배송비</th>
+                <th className={thClass}>적용무게</th>
+                <th className={`${thClass} border-r-0`}>배송번호</th>
               </tr>
             </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={19} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                <td colSpan={22} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
                   검색 결과가 없습니다.
                 </td>
               </tr>
@@ -1351,7 +1603,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               const itemPhotoSent = item.photo_sent ?? order.photo_sent;
 
               return (
-                <tr key={rowKey}>
+                <tr key={rowKey} data-row-idx={idx}>
                   {/* # 줄 번호 */}
                   <td
                     className={`${tdBase} sticky z-10 border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}
@@ -1386,7 +1638,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
 
                   {/* 상품명 */}
                   <td
-                    className={`${tdBase} sticky z-10 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : getProgressBgColor(itemProgress)}`}
+                    className={`${tdBase} relative sticky z-10 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : isFillHighlight(idx, "product_name", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getProgressBgColor(itemProgress)}`}
                     style={{ left: "168px", width: "320px", minWidth: "320px" }}
                     title={item.product_name}
                   >
@@ -1395,8 +1647,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         ref={inputRef}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "product_name", item); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "item" || cur.itemId !== id || cur.field !== "product_name") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveItemField(id, on, "product_name", d, b, item);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1412,11 +1671,14 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {displayName(item.product_name, item.product_option)}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "product_name" && (
+                      <FillHandle rowIdx={idx} field="product_name" kind="item" rawValue={item.product_name} />
+                    )}
                   </td>
 
                   {/* 옵션 */}
                   <td
-                    className={`${tdBase} text-left ${isEditingItem(id, "product_option") ? editingBg : getProgressBgColor(itemProgress)}`}
+                    className={`${tdBase} relative text-left ${isEditingItem(id, "product_option") ? editingBg : isFillHighlight(idx, "product_option", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getProgressBgColor(itemProgress)}`}
                     title={item.product_option ?? ""}
                   >
                     {isEditingItem(id, "product_option") ? (
@@ -1424,8 +1686,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         ref={inputRef}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "product_option", item); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "item" || cur.itemId !== id || cur.field !== "product_option") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveItemField(id, on, "product_option", d, b, item);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1443,10 +1712,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {item.product_option ?? "—"}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "product_option" && (
+                      <FillHandle rowIdx={idx} field="product_option" kind="item" rawValue={item.product_option ?? ""} />
+                    )}
                   </td>
 
                   {/* 진행 */}
-                  <td className={`${tdBase} p-1 ${isEditingItem(id, "progress") ? editingBg : getProgressBgColor(itemProgress)}`}>
+                  <td className={`${tdBase} relative p-1 ${isEditingItem(id, "progress") ? editingBg : isFillHighlight(idx, "progress", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getProgressBgColor(itemProgress)}`}>
                     {isEditingItem(id, "progress") ? (
                       <select
                         ref={selectRef}
@@ -1471,10 +1743,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {itemProgress}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "progress" && (
+                      <FillHandle rowIdx={idx} field="progress" kind="item" rawValue={itemProgress} />
+                    )}
                   </td>
 
                   {/* 단품/세트 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "product_set_type") ? editingBg : getSetTypeBg(item.product_set_type)}`}>
+                  <td className={`${tdBase} relative ${isEditingItem(id, "product_set_type") ? editingBg : isFillHighlight(idx, "product_set_type", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getSetTypeBg(item.product_set_type)}`}>
                     {isEditingItem(id, "product_set_type") ? (
                       <select
                         ref={selectRef}
@@ -1503,10 +1778,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {item.product_set_type}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "product_set_type" && (
+                      <FillHandle rowIdx={idx} field="product_set_type" kind="item" rawValue={item.product_set_type} />
+                    )}
                   </td>
 
                   {/* 선물 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "gift") ? editingBg : getGiftBg(itemGift)}`}>
+                  <td className={`${tdBase} relative ${isEditingItem(id, "gift") ? editingBg : isFillHighlight(idx, "gift", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getGiftBg(itemGift)}`}>
                     {isEditingItem(id, "gift") ? (
                       <select
                         ref={selectRef}
@@ -1530,10 +1808,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {itemGift === "ask" ? "ask" : "no"}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "gift" && (
+                      <FillHandle rowIdx={idx} field="gift" kind="item" rawValue={itemGift === "ask" ? "ask" : "no"} />
+                    )}
                   </td>
 
                   {/* 사진 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "photo_sent") ? editingBg : getPhotoSentBg(itemPhotoSent)}`}>
+                  <td className={`${tdBase} relative ${isEditingItem(id, "photo_sent") ? editingBg : isFillHighlight(idx, "photo_sent", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getPhotoSentBg(itemPhotoSent)}`}>
                     {isEditingItem(id, "photo_sent") ? (
                       <select
                         ref={selectRef}
@@ -1558,6 +1839,9 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {itemPhotoSent}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "photo_sent" && (
+                      <FillHandle rowIdx={idx} field="photo_sent" kind="item" rawValue={itemPhotoSent} />
+                    )}
                   </td>
 
                   {/* 일자 */}
@@ -1568,8 +1852,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         type="date"
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishOrderField(rowKey, on, "date"); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "order" || cur.rowKey !== rowKey || cur.field !== "date") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveOrderField(on, "date", d, b);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1587,7 +1878,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   </td>
 
                   {/* 플랫폼 */}
-                  <td className={`${tdBase} ${isEditingOrder(rowKey, "platform") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative ${isEditingOrder(rowKey, "platform") ? editingBg : isFillHighlight(idx, "platform", "order") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingOrder(rowKey, "platform") ? (
                       <select
                         ref={selectRef}
@@ -1612,10 +1903,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {order.platform}
                       </button>
                     )}
+                    {focusedCell?.kind === "order" && focusedCell.orderNum === on && focusedCell.field === "platform" && (
+                      <FillHandle rowIdx={idx} field="platform" kind="order" rawValue={order.platform} />
+                    )}
                   </td>
 
                   {/* 경로 */}
-                  <td className={`${tdBase} ${isEditingOrder(rowKey, "order_type") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative ${isEditingOrder(rowKey, "order_type") ? editingBg : isFillHighlight(idx, "order_type", "order") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingOrder(rowKey, "order_type") ? (
                       <select
                         ref={selectRef}
@@ -1640,17 +1934,27 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {order.order_type}
                       </button>
                     )}
+                    {focusedCell?.kind === "order" && focusedCell.orderNum === on && focusedCell.field === "order_type" && (
+                      <FillHandle rowIdx={idx} field="order_type" kind="order" rawValue={order.order_type} />
+                    )}
                   </td>
 
                   {/* 고객 */}
-                  <td className={`${tdBase} ${isEditingOrder(rowKey, "customer_name") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative ${isEditingOrder(rowKey, "customer_name") ? editingBg : isFillHighlight(idx, "customer_name", "order") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingOrder(rowKey, "customer_name") ? (
                       <input
                         ref={inputRef}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishOrderField(rowKey, on, "customer_name"); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "order" || cur.rowKey !== rowKey || cur.field !== "customer_name") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveOrderField(on, "customer_name", d, b);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1668,17 +1972,27 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {order.customer_name ?? "—"}
                       </button>
                     )}
+                    {focusedCell?.kind === "order" && focusedCell.orderNum === on && focusedCell.field === "customer_name" && (
+                      <FillHandle rowIdx={idx} field="customer_name" kind="order" rawValue={order.customer_name ?? ""} />
+                    )}
                   </td>
 
                   {/* 거래처 */}
-                  <td className={`${tdBase} ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : isFillHighlight(idx, "purchase_channel", "order") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingOrder(rowKey, "purchase_channel") ? (
                       <input
                         ref={inputRef}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishOrderField(rowKey, on, "purchase_channel"); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "order" || cur.rowKey !== rowKey || cur.field !== "purchase_channel") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveOrderField(on, "purchase_channel", d, b);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1699,10 +2013,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {order.purchase_channel ?? "—"}
                       </button>
                     )}
+                    {focusedCell?.kind === "order" && focusedCell.orderNum === on && focusedCell.field === "purchase_channel" && (
+                      <FillHandle rowIdx={idx} field="purchase_channel" kind="order" rawValue={order.purchase_channel ?? ""} />
+                    )}
                   </td>
 
                   {/* 카테고리 */}
-                  <td className={`${tdBase} ${isEditingItem(id, "product_type") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative ${isEditingItem(id, "product_type") ? editingBg : isFillHighlight(idx, "product_type", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingItem(id, "product_type") ? (
                       <select
                         ref={selectRef}
@@ -1732,10 +2049,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {item.product_type ?? "—"}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "product_type" && (
+                      <FillHandle rowIdx={idx} field="product_type" kind="item" rawValue={item.product_type ?? ""} />
+                    )}
                   </td>
 
                   {/* 수량 */}
-                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "quantity") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative tabular-nums ${isEditingItem(id, "quantity") ? editingBg : isFillHighlight(idx, "quantity", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingItem(id, "quantity") ? (
                       <input
                         ref={inputRef}
@@ -1743,8 +2063,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         min={1}
                         className="w-14 rounded border border-sky-400 bg-white px-1 py-0.5 text-center text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "quantity", item); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "item" || cur.itemId !== id || cur.field !== "quantity") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveItemField(id, on, "quantity", d, b, item);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1759,10 +2086,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {item.quantity}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "quantity" && (
+                      <FillHandle rowIdx={idx} field="quantity" kind="item" rawValue={String(item.quantity)} />
+                    )}
                   </td>
 
                   {/* 판매가₽ */}
-                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "price_rub") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative tabular-nums ${isEditingItem(id, "price_rub") ? editingBg : isFillHighlight(idx, "price_rub", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingItem(id, "price_rub") ? (
                       <input
                         ref={inputRef}
@@ -1770,8 +2100,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         step="0.01"
                         className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "price_rub", item); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "item" || cur.itemId !== id || cur.field !== "price_rub") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveItemField(id, on, "price_rub", d, b, item);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1786,10 +2123,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {fmtRub(item.price_rub)}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "price_rub" && (
+                      <FillHandle rowIdx={idx} field="price_rub" kind="item" rawValue={String(item.price_rub)} />
+                    )}
                   </td>
 
                   {/* 원화매입 */}
-                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "krw") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative tabular-nums ${isEditingItem(id, "krw") ? editingBg : isFillHighlight(idx, "krw", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingItem(id, "krw") ? (
                       <input
                         ref={inputRef}
@@ -1797,8 +2137,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         step={1}
                         className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "krw", item); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "item" || cur.itemId !== id || cur.field !== "krw") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveItemField(id, on, "krw", d, b, item);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1813,10 +2160,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {fmtKrw(item.krw)}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "krw" && (
+                      <FillHandle rowIdx={idx} field="krw" kind="item" rawValue={item.krw != null ? String(item.krw) : ""} />
+                    )}
                   </td>
 
                   {/* 선결제₽ */}
-                  <td className={`${tdBase} tabular-nums ${isEditingItem(id, "prepayment_rub") ? editingBg : whiteBg}`}>
+                  <td className={`${tdBase} relative tabular-nums ${isEditingItem(id, "prepayment_rub") ? editingBg : isFillHighlight(idx, "prepayment_rub", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingItem(id, "prepayment_rub") ? (
                       <input
                         ref={inputRef}
@@ -1824,8 +2174,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         step="0.01"
                         className="w-20 rounded border border-sky-400 bg-white px-1 py-0.5 text-right text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onBlur={(e) => { if (e.relatedTarget === barInputRef.current) return; void finishItemField(id, "prepayment_rub", item); }}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "item" || cur.itemId !== id || cur.field !== "prepayment_rub") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveItemField(id, on, "prepayment_rub", d, b, item);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                           if (e.key === "Escape") cancelEdit();
@@ -1842,11 +2199,27 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                         {fmtRub(item.prepayment_rub)}
                       </button>
                     )}
+                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "prepayment_rub" && (
+                      <FillHandle rowIdx={idx} field="prepayment_rub" kind="item" rawValue={String(item.prepayment_rub)} />
+                    )}
                   </td>
 
                   {/* 잔금₽ */}
-                  <td className={`${tdBase} border-r-0 tabular-nums text-zinc-700 dark:text-zinc-300 ${whiteBg}`}>
+                  <td className={`${tdBase} tabular-nums text-zinc-700 dark:text-zinc-300 ${whiteBg}`}>
                     {fmtRub(computedExtra(item))}
+                  </td>
+                  <td className={`${tdBase} tabular-nums`}>
+                    {row.order.shipping_fee != null
+                      ? `${Number(row.order.shipping_fee).toLocaleString("ko-KR")} ₽`
+                      : "—"}
+                  </td>
+                  <td className={`${tdBase} tabular-nums`}>
+                    {row.order.applied_weight != null
+                      ? `${row.order.applied_weight} kg`
+                      : "—"}
+                  </td>
+                  <td className={`${tdBase} border-r-0 text-left`}>
+                    {row.order.tracking_number ?? "—"}
                   </td>
                 </tr>
               );
