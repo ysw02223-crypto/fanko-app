@@ -1344,6 +1344,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                 초기화
               </button>
             )}
+            <DeliveryImportButton onImportDone={fetchOrders} />
             <input
               type="text"
               placeholder="주문번호·상품명·고객·옵션 검색…"
@@ -1352,7 +1353,6 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-            <DeliveryImportButton onImportDone={fetchOrders} />
           </div>
         </div>,
         portalEl,
