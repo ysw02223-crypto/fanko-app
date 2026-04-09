@@ -1,39 +1,17 @@
 import { signOut } from "@/lib/actions/auth";
 import Link from "next/link";
+import { NavMenu } from "@/components/nav-menu";
 
 export function CrmShell({ email, children }: { email: string; children: React.ReactNode }) {
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
         <div className="flex h-14 w-full items-center gap-6 px-6">
-          <nav className="flex items-center gap-6 text-sm font-medium">
-            <Link href="/orders" className="text-emerald-700 dark:text-emerald-400">
+          <nav className="flex items-center gap-4 text-sm font-medium">
+            <Link href="/orders" className="font-bold text-emerald-700 dark:text-emerald-400">
               FANKO CRM
             </Link>
-            <Link
-              href="/orders"
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              주문 목록
-            </Link>
-            <Link
-              href="/orders/new"
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              주문 추가
-            </Link>
-            <Link
-              href="/shipping"
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              배송 관리
-            </Link>
-            <Link
-              href="/history"
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              변경 이력
-            </Link>
+            <NavMenu />
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
             <span className="hidden max-w-[200px] truncate sm:inline">{email}</span>
