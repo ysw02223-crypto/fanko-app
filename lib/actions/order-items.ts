@@ -125,6 +125,8 @@ export async function updateOrderItem(
     return { error: "선결제/잔금을 확인하세요." };
   }
 
+  const krwValue = krw !== null && Number.isFinite(krw) ? krw : null;
+
   const { error } = await supabase
     .from("order_items")
     .update({
@@ -136,15 +138,30 @@ export async function updateOrderItem(
       price_rub,
       prepayment_rub,
       extra_payment_rub,
-      krw: krw !== null && Number.isFinite(krw) ? krw : null,
+      krw: krwValue,
     })
     .eq("id", itemId)
     .eq("order_num", orderNum);
 
   if (error) return { error: error.message };
 
+  // 수입목록 동기화 (order_item_id로 upsert)
+  const saleKrw = Math.round(price_rub * 16.5);
+  const buyKrw  = krwValue ?? 0;
+  await supabase.from("fin_income_records").update({
+    product_name,
+    product_type: product_type ?? null,
+    sale_amount: price_rub,
+    sale_krw: saleKrw,
+    purchase_amount: buyKrw,
+    purchase_krw: buyKrw,
+    profit_krw: saleKrw - buyKrw,
+    updated_at: new Date().toISOString(),
+  }).eq("order_item_id", itemId);
+
   revalidatePath("/orders");
   revalidatePath(`/orders/${encodeURIComponent(orderNum)}`);
+  revalidatePath("/finance/income");
   return { ok: "상품을 수정했습니다." };
 }
 

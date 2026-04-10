@@ -166,7 +166,42 @@ export async function createOrderWithItemsAction(
     return { error: itemsErr.message };
   }
 
+  // 수입목록 동기화 — 각 품목을 fin_income_records 에 upsert
+  const { data: insertedItems } = await supabase
+    .from("order_items")
+    .select("id, product_name, product_type, price_rub, krw")
+    .eq("order_num", order_num);
+
+  for (const item of insertedItems ?? []) {
+    const saleKrw = Math.round(Number(item.price_rub) * 16.5);
+    const buyKrw  = Number(item.krw ?? 0);
+    await supabase.from("fin_income_records").upsert(
+      {
+        date,
+        category: "러시아판매",
+        sub_category: null,
+        product_name: item.product_name as string,
+        product_type: (item.product_type as string | null) ?? null,
+        sale_currency: "RUB",
+        sale_amount: Number(item.price_rub),
+        sale_rate: 16.5,
+        sale_krw: saleKrw,
+        purchase_currency: "KRW",
+        purchase_amount: buyKrw,
+        purchase_rate: null,
+        purchase_krw: buyKrw,
+        profit_krw: saleKrw - buyKrw,
+        source: "order",
+        order_item_id: item.id as string,
+        note: null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "order_item_id" },
+    );
+  }
+
   revalidatePath("/orders");
+  revalidatePath("/finance/income");
   redirect("/orders");
 }
 

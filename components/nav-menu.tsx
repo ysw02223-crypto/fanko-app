@@ -24,8 +24,12 @@ const TOP_MENUS: TopMenu[] = [
   },
   {
     label: "재무관리",
-    items: [],
-    disabled: true,
+    items: [
+      { label: "재무 대시보드", href: "/finance" },
+      { label: "수입 목록", href: "/finance/income" },
+      { label: "지출 목록", href: "/finance/expense" },
+      { label: "환전 관리", href: "/finance/exchange" },
+    ],
   },
 ];
 

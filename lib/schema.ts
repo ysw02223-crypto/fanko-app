@@ -62,3 +62,120 @@ export type OrderItemRow = {
   gift: string | null;
   photo_sent: string | null;
 };
+
+// ─── Finance Types ────────────────────────────────────────────────
+
+export type FinKrTransaction = {
+  id: string;
+  date: string;
+  type: "income" | "expense";
+  category: string;
+  subcategory: string | null;
+  detail: string | null;
+  description: string;
+  amount: number;
+  payment_method: string | null;
+  selling_price: number | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FinRuTransaction = {
+  id: string;
+  date: string;
+  type: "income" | "expense";
+  category: string;
+  subcategory: string | null;
+  description: string;
+  amount_rub: number;
+  exchange_rate: number | null;
+  amount_krw: number | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FinExchangeRecord = {
+  id: string;
+  date: string;
+  description: string;
+  rub_amount: number;
+  exchange_rate: number;
+  krw_amount: number;
+  book_rate: number | null;
+  fx_profit: number | null;
+  note: string | null;
+  created_at: string;
+};
+
+// ─── 수입 기록 ────────────────────────────────────────────────
+export const INCOME_CATEGORIES_CONST = [
+  "러시아판매",
+  "도매",
+  "국내판매",
+  "기타",
+] as const;
+export type IncomeCategoryType = (typeof INCOME_CATEGORIES_CONST)[number];
+
+export type FinIncomeRecord = {
+  id: string;
+  date: string;
+  category: IncomeCategoryType;
+  sub_category: string | null;
+  product_name: string;
+  product_type: string | null;
+  sale_currency: "KRW" | "RUB";
+  sale_amount: number;
+  sale_rate: number | null;
+  sale_krw: number | null;
+  purchase_currency: "KRW" | "RUB";
+  purchase_amount: number;
+  purchase_rate: number | null;
+  purchase_krw: number | null;
+  profit_krw: number | null;
+  source: "order" | "manual";
+  order_item_id: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// ─── 지출 기록 ────────────────────────────────────────────────
+export type FinExpenseRecord = {
+  id: string;
+  date: string;
+  major_category: string;
+  mid_category: string | null;
+  minor_category: string | null;
+  description: string;
+  currency: "KRW" | "RUB";
+  amount: number;
+  rate: number | null;
+  amount_krw: number | null;
+  memo: string | null;
+  source: "order" | "manual";
+  order_num: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export const FIN_ACCOUNTS = [
+  "toss",
+  "kookmin",
+  "olive_coupon",
+  "culture_coupon",
+  "sber",
+  "tinkoff",
+  "receivable",
+] as const;
+export type FinAccount = (typeof FIN_ACCOUNTS)[number];
+
+export type FinAccountSnapshot = {
+  id: string;
+  year_month: string;
+  account: FinAccount;
+  balance: number;
+  currency: "KRW" | "RUB";
+  created_at: string;
+};

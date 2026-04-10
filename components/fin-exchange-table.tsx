@@ -33,7 +33,7 @@ type ModalState =
 
 type FormData = {
   date: string;
-  person: string;
+  description: string;
   rub_amount: string;
   exchange_rate: string;
   krw_amount: string;
@@ -45,7 +45,7 @@ type FormData = {
 function emptyForm(): FormData {
   return {
     date: todayKst(),
-    person: "",
+    description: "",
     rub_amount: "",
     exchange_rate: "",
     krw_amount: "",
@@ -58,7 +58,7 @@ function emptyForm(): FormData {
 function rowToForm(row: FinExchangeRecord): FormData {
   return {
     date: row.date,
-    person: row.person,
+    description: row.description,
     rub_amount: String(row.rub_amount),
     exchange_rate: String(row.exchange_rate),
     krw_amount: String(row.krw_amount),
@@ -90,32 +90,30 @@ function ExchangeModal({
     setForm((prev) => {
       const next = { ...prev, [field]: value };
 
-      // Auto-calc krw_amount when rub * rate changes
-      if (field === "rub_amount" || field === "exchange_rate") {
-        const rub = field === "rub_amount" ? Number(value) : Number(prev.rub_amount);
-        const rate =
-          field === "exchange_rate" ? Number(value) : Number(prev.exchange_rate);
-        if (!isNaN(rub) && !isNaN(rate) && rate > 0) {
+      // rub + krw → rate 자동계산 (실제 거래 방식: 루블·원화 입력 → 환율 도출)
+      if (field === "rub_amount" || field === "krw_amount") {
+        const rub = Number(field === "rub_amount" ? value : prev.rub_amount);
+        const krw = Number(field === "krw_amount" ? value : prev.krw_amount);
+        if (rub > 0 && krw > 0) {
+          next.exchange_rate = (krw / rub).toFixed(4);
+        }
+      }
+
+      // exchange_rate 직접 수정 시 → krw 갱신
+      if (field === "exchange_rate") {
+        const rub = Number(prev.rub_amount);
+        const rate = Number(value);
+        if (rub > 0 && rate > 0) {
           next.krw_amount = String(Math.round(rub * rate));
         }
       }
 
-      // Auto-calc fx_profit when book_rate or rub_amount changes
-      const rubForCalc =
-        field === "rub_amount" ? Number(value) : Number(next.rub_amount);
-      const actualRate =
-        field === "exchange_rate" ? Number(value) : Number(next.exchange_rate);
-      const bookRateNum =
-        field === "book_rate" ? Number(value) : Number(next.book_rate);
-      if (
-        !isNaN(rubForCalc) &&
-        !isNaN(actualRate) &&
-        !isNaN(bookRateNum) &&
-        bookRateNum > 0
-      ) {
-        next.fx_profit = String(
-          Math.round((actualRate - bookRateNum) * rubForCalc),
-        );
+      // 환차익 자동계산
+      const rubForCalc = Number(next.rub_amount);
+      const actualRate = Number(next.exchange_rate);
+      const bookRateNum = Number(next.book_rate);
+      if (rubForCalc > 0 && actualRate > 0 && bookRateNum > 0) {
+        next.fx_profit = String(Math.round((actualRate - bookRateNum) * rubForCalc));
       }
 
       return next;
@@ -125,29 +123,30 @@ function ExchangeModal({
   function handleSubmit() {
     if (
       !form.date ||
-      !form.person ||
+      !form.description ||
       !form.rub_amount ||
-      !form.exchange_rate ||
       !form.krw_amount
     ) {
-      setError("날짜, 대리인, 루블금액, 환율, 원화금액은 필수입니다.");
+      setError("날짜, 내용, 루블금액, 원화금액은 필수입니다.");
       return;
     }
 
     const rub_amount = Number(form.rub_amount.replace(/,/g, ""));
-    const exchange_rate = Number(form.exchange_rate);
     const krw_amount = Number(form.krw_amount.replace(/,/g, ""));
+    const exchange_rate = krw_amount > 0 && rub_amount > 0
+      ? parseFloat((krw_amount / rub_amount).toFixed(4))
+      : Number(form.exchange_rate);
     const book_rate = form.book_rate !== "" ? Number(form.book_rate) : null;
     const fx_profit = form.fx_profit !== "" ? Number(form.fx_profit.replace(/,/g, "")) : null;
 
-    if (isNaN(rub_amount) || isNaN(exchange_rate) || isNaN(krw_amount)) {
+    if (isNaN(rub_amount) || isNaN(krw_amount)) {
       setError("숫자 값이 올바르지 않습니다.");
       return;
     }
 
     const payload = {
       date: form.date,
-      person: form.person,
+      description: form.description,
       rub_amount,
       exchange_rate,
       krw_amount,
@@ -192,11 +191,11 @@ function ExchangeModal({
               />
             </div>
             <div>
-              <label className={labelClass}>대리인</label>
+              <label className={labelClass}>내용</label>
               <input
                 type="text"
-                value={form.person}
-                onChange={(e) => set("person", e.target.value)}
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
                 placeholder="이목원, 진실, 큰삼촌…"
                 className={inputClass + " mt-1"}
               />
@@ -216,25 +215,28 @@ function ExchangeModal({
               />
             </div>
             <div>
+              <label className={labelClass}>원화 금액 (₩)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={form.krw_amount}
+                onChange={(e) => set("krw_amount", e.target.value)}
+                placeholder="1,200,000"
+                className={inputClass + " mt-1"}
+              />
+            </div>
+            <div>
               <label className={labelClass}>환전환율 (₽/원)</label>
               <input
                 type="text"
                 inputMode="decimal"
                 value={form.exchange_rate}
                 onChange={(e) => set("exchange_rate", e.target.value)}
-                placeholder="13.56"
-                className={inputClass + " mt-1"}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>원화 금액</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={form.krw_amount}
-                onChange={(e) => set("krw_amount", e.target.value)}
                 placeholder="자동 계산"
-                className={inputClass + " mt-1"}
+                className={inputClass + " mt-1 bg-zinc-50 dark:bg-zinc-800"}
+                readOnly={
+                  Number(form.rub_amount) > 0 && Number(form.krw_amount) > 0
+                }
               />
             </div>
           </div>
@@ -363,10 +365,10 @@ export function FinExchangeTable({
           <thead className="bg-zinc-50 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
             <tr>
               <th className="px-3 py-2 text-left">날짜</th>
-              <th className="px-3 py-2 text-left">대리인</th>
+              <th className="px-3 py-2 text-left">내용</th>
               <th className="px-3 py-2 text-right">루블</th>
-              <th className="px-3 py-2 text-right">환전환율</th>
               <th className="px-3 py-2 text-right">원화</th>
+              <th className="px-3 py-2 text-right">환전환율</th>
               <th className="px-3 py-2 text-right">장부환율</th>
               <th className="px-3 py-2 text-right">환차익</th>
               <th className="px-3 py-2 text-left">참고</th>
@@ -388,12 +390,12 @@ export function FinExchangeTable({
                 onClick={() => setModal({ mode: "edit", row })}
               >
                 <td className="px-3 py-2 text-zinc-500">{row.date}</td>
-                <td className="px-3 py-2 font-medium">{row.person}</td>
+                <td className="px-3 py-2 font-medium">{row.description}</td>
                 <td className="px-3 py-2 text-right">{fmtRub(row.rub_amount)}</td>
-                <td className="px-3 py-2 text-right text-zinc-500">{row.exchange_rate}</td>
                 <td className="px-3 py-2 text-right font-medium text-emerald-600">
                   {fmtKrw(row.krw_amount)}
                 </td>
+                <td className="px-3 py-2 text-right text-zinc-500">{row.exchange_rate}</td>
                 <td className="px-3 py-2 text-right text-zinc-500">
                   {row.book_rate != null ? row.book_rate : "—"}
                 </td>
@@ -429,8 +431,8 @@ export function FinExchangeTable({
               <tr>
                 <td colSpan={2} className="px-3 py-2 text-right text-zinc-500">합계</td>
                 <td className="px-3 py-2 text-right">{fmtRub(totalRub)}</td>
-                <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-emerald-600">{fmtKrw(totalKrw)}</td>
+                <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-amber-600">{fmtKrw(totalFxProfit)}</td>
                 <td colSpan={2} />
