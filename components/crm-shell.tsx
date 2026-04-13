@@ -11,7 +11,7 @@ export function CrmShell({ email, children }: { email: string; children: React.R
 
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
-      <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+      <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         <div className="flex h-14 w-full items-center gap-6 px-6">
           <nav className="flex items-center gap-4 text-sm font-medium">
             <Link href="/orders" className="font-bold text-emerald-700 dark:text-emerald-400">
