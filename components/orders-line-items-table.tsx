@@ -19,6 +19,7 @@ import {
   type OrderItemRow,
 } from "@/lib/schema";
 import { DeliveryImportButton } from "@/components/delivery-import-button";
+import { OrdersMobileView } from "@/components/orders-mobile-view";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1444,6 +1445,19 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         portalEl,
       )}
 
+      {/* ── 모바일 카드 뷰 (lg 미만) ──────────────────────────── */}
+      <div className="block lg:hidden">
+        <OrdersMobileView
+          filteredRows={filteredRows}
+          orderCount={orderCount}
+          lineCount={lineCount}
+          saveItemField={saveItemField}
+          saveOrderField={saveOrderField}
+        />
+      </div>
+
+      {/* ── 데스크탑 테이블 뷰 (lg 이상) ─────────────────────── */}
+      <div className="hidden lg:block">
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         주문 {orderCount}건 · 표시 행 {lineCount}줄 · 테이블을 드래그하면 좌우로 스크롤됩니다.
       </p>
@@ -2311,6 +2325,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         </table>
       </div>
       </div>
+      </div>{/* end hidden lg:block desktop wrapper */}
     </>
   );
 }
