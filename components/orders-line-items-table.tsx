@@ -1690,7 +1690,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   {/* # 줄 번호 */}
                   <td
                     className={`${tdBase} sticky z-10 border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}
-                    style={{ left: 0, width: "32px", minWidth: "32px" }}
+                    style={{ left: 0, width: "32px", minWidth: "32px", willChange: "transform" }}
                   >
                     {idx + 1}
                   </td>
@@ -1698,7 +1698,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   {/* 일자 — order 필드 */}
                   <td
                     className={`${tdBase} sticky z-10 whitespace-nowrap border-r-gray-300 ${isEditingOrder(rowKey, "date") ? editingBg : whiteBg}`}
-                    style={{ left: "32px", width: "90px", minWidth: "90px" }}
+                    style={{ left: "32px", width: "90px", minWidth: "90px", willChange: "transform" }}
                   >
                     {isEditingOrder(rowKey, "date") ? (
                       <input
@@ -1736,7 +1736,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   {/* 주문번호 */}
                   <td
                     className={`${tdBase} sticky z-10 border-r-gray-300 font-semibold ${orderBg}`}
-                    style={{ left: "122px", width: "90px", minWidth: "90px" }}
+                    style={{ left: "122px", width: "90px", minWidth: "90px", willChange: "transform" }}
                   >
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
@@ -1749,7 +1749,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   {/* 상품명 */}
                   <td
                     className={`${tdBase} relative sticky z-10 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : isFillHighlight(idx, "product_name", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getProgressBgColor(itemProgress)}`}
-                    style={{ left: "212px", width: "320px", minWidth: "320px" }}
+                    style={{ left: "212px", width: "320px", minWidth: "320px", willChange: "transform" }}
                     title={item.product_name}
                   >
                     {isEditingItem(id, "product_name") ? (
