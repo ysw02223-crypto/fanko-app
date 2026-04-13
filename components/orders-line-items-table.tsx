@@ -278,6 +278,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const [undoingId, setUndoingId] = useState<string | null>(null);
 
   const tableRef = useRef<HTMLDivElement>(null);
+  const headerWrapRef = useRef<HTMLDivElement>(null);
+  const headerTableRef = useRef<HTMLTableElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -516,6 +518,16 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     };
   }, []);
 
+  // 헤더 테이블 가로 스크롤 동기화
+  useEffect(() => {
+    const bodyEl = tableRef.current;
+    const headerWrap = headerWrapRef.current;
+    if (!bodyEl || !headerWrap) return;
+    const onScroll = () => { headerWrap.scrollLeft = bodyEl.scrollLeft; };
+    onScroll();
+    bodyEl.addEventListener("scroll", onScroll);
+    return () => bodyEl.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     if (!editing) return;
@@ -1536,6 +1548,70 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           );
         })()}
 
+        {/* ── 수직 sticky 헤더 테이블 (overflow-x:auto 밖에 위치 → window 기준 sticky) ── */}
+        <div
+          ref={headerWrapRef}
+          className="sticky z-20 bg-white dark:bg-zinc-950"
+          style={{ top: 108, overflowX: "hidden" }}
+        >
+          <table
+            ref={headerTableRef}
+            className="min-w-full text-left text-sm"
+            style={{ tableLayout: "fixed", width: "100%", minWidth: 2152, borderCollapse: "separate", borderSpacing: 0 }}
+          >
+            <colgroup>
+              <col style={{ width: "32px" }} />
+              <col style={{ width: "90px" }} />
+              <col style={{ width: "90px" }} />
+              <col style={{ width: "320px" }} />
+              <col style={{ width: "180px" }} />
+              <col style={{ width: "112px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "52px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "140px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "48px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "88px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "72px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "120px" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className={`${thClass} sticky left-0 z-30`}>{t.col_num}</th>
+                <th className={`${thClass} sticky left-[32px] z-30`}>{t.col_date}</th>
+                <th className={`${thClass} sticky left-[122px] z-30`}>{t.col_order_num}</th>
+                <th className={`${thClass} sticky left-[212px] z-30 text-left`}>{t.col_product_name}</th>
+                <th className={`${thClass} text-left`}>{t.col_option}</th>
+                <th className={thClass}>{t.col_progress}</th>
+                <th className={`${thClass} th-ru-xs`}>{t.col_set_type}</th>
+                <th className={`${thClass} th-ru-xs`}>{t.col_gift}</th>
+                <th className={thClass}>{t.col_photo}</th>
+                <th className={thClass}>{t.col_platform}</th>
+                <th className={thClass}>{t.col_route}</th>
+                <th className={thClass}>{t.col_customer}</th>
+                <th className={thClass}>{t.col_channel}</th>
+                <th className={thClass}>{t.col_category}</th>
+                <th className={thClass}>{t.col_quantity}</th>
+                <th className={thClass}>{t.col_price_rub}</th>
+                <th className={thClass}>{t.col_krw}</th>
+                <th className={thClass}>{t.col_prepay_rub}</th>
+                <th className={thClass}>{t.col_balance_rub}</th>
+                <th className={thClass}>{t.col_shipping_fee}</th>
+                <th className={thClass}>{t.col_weight}</th>
+                <th className={`${thClass} border-r-0`}>{t.col_tracking}</th>
+              </tr>
+            </thead>
+          </table>
+        </div>
+
         <div ref={tableRef} style={{ overflowX: "auto", overflowY: "clip" }}>
           <table
             className="min-w-full text-left text-sm"
@@ -1565,7 +1641,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <col style={{ width: "80px" }} />
               <col style={{ width: "120px" }} />
             </colgroup>
-            <thead className="sticky z-20 bg-white dark:bg-zinc-950" style={{ top: 108 }}>
+            <thead className="sr-only">
               <tr>
                 <th className={`${thClass} sticky left-0 z-30`}>{t.col_num}</th>
                 <th className={`${thClass} sticky left-[32px] z-30`}>{t.col_date}</th>
