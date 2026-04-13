@@ -4,16 +4,12 @@ import { useRouter } from "next/navigation";
 import type { FinDashboardMonthly } from "@/lib/actions/finance-dashboard";
 
 function fmtKrw(n: number) {
-  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M원";
-  if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(0) + "K원";
   return n.toLocaleString("ko-KR") + "원";
 }
 function fmtKrwFull(n: number) {
   return n.toLocaleString("ko-KR") + "원";
 }
 function fmtRub(n: number) {
-  if (Math.abs(n) >= 1_000_000) return "₽" + (n / 1_000_000).toFixed(1) + "M";
-  if (Math.abs(n) >= 1_000) return "₽" + (n / 1_000).toFixed(0) + "K";
   return "₽" + n.toLocaleString("ru-RU");
 }
 

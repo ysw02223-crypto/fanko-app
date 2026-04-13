@@ -5,6 +5,7 @@ import type { OrderForShipping } from "@/lib/actions/shipping";
 import { toggleDownloadedAction } from "@/lib/actions/shipping";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useT } from "@/lib/i18n";
 
 // ── 타입 ────────────────────────────────────────────────────────────────────────
 
@@ -48,16 +49,6 @@ export type ShippingTableProps = {
 
 // ── 상수 ────────────────────────────────────────────────────────────────────────
 
-const FIELD_LABELS: Record<ShippingEditableField, string> = {
-  recipient_name: "수취인명",
-  recipient_phone: "연락처",
-  recipient_email: "이메일",
-  zip_code: "우편번호",
-  region: "지역",
-  city: "도시",
-  address: "주소",
-  customs_number: "통관번호",
-};
 
 const EDITABLE_FIELDS: ShippingEditableField[] = [
   "recipient_name",
@@ -181,6 +172,17 @@ function formatDate(dateStr: string): string {
 // ── 메인 컴포넌트 ───────────────────────────────────────────────────────────────
 
 export function ShippingTable({ initialOrders }: ShippingTableProps) {
+  const t = useT();
+  const fieldLabels: Record<ShippingEditableField, string> = {
+    recipient_name: t.ship_col_recipient,
+    recipient_phone: t.ship_col_phone,
+    recipient_email: t.ship_col_email,
+    zip_code: t.ship_col_zip,
+    region: t.ship_col_region,
+    city: t.ship_col_city,
+    address: t.ship_col_address,
+    customs_number: t.ship_col_customs,
+  };
   const [orders, setOrders] = useState<ShippingOrder[]>(initialOrders);
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [focusedCell, setFocusedCell] = useState<EditTarget | null>(null);
@@ -482,7 +484,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
         pushHistory({
           orderNum,
           field,
-          columnLabel: FIELD_LABELS[field],
+          columnLabel: fieldLabels[field],
           oldDisplay: displayVal(oldVal),
           newDisplay: displayVal(newVal),
           revert: async () => {
@@ -768,8 +770,12 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     });
   }, [orders, statusFilter, searchQuery]);
 
-  const doneCount = useMemo(() => orders.filter(isComplete).length, [orders]);
-  const todoCount = orders.length - doneCount;
+  const shippingDoneCount = useMemo(() => orders.filter(isComplete).length, [orders]);
+  const shippingTodoCount = orders.length - shippingDoneCount;
+  const ordersDoneCount = useMemo(
+    () => orders.filter((o) => o.progress === "DONE").length,
+    [orders],
+  );
 
   // filteredOrdersRef 동기화
   filteredOrdersRef.current = filteredOrders;
@@ -827,22 +833,22 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
           <div className="flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
               <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                변경 이력 (최근 30개)
+                {t.history_panel_title}
               </p>
               <button
                 type="button"
                 className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 onClick={() => setHistoryOpen(false)}
               >
-                닫기
+                {t.btn_close}
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3">
               <p className="mb-2 text-xs text-gray-400">
-                Ctrl+Z로 마지막 변경을 되돌릴 수 있습니다
+                {t.history_panel_hint}
               </p>
               {history.length === 0 ? (
-                <p className="text-sm text-zinc-500">아직 기록된 변경이 없습니다.</p>
+                <p className="text-sm text-zinc-500">{t.state_no_changes}</p>
               ) : (
                 <ul className="flex flex-col gap-3">
                   {history.map((e) => (
@@ -857,7 +863,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                         })}
                       </p>
                       <p className="mt-1 text-zinc-800 dark:text-zinc-200">
-                        주문 {e.orderNum} · {e.columnLabel} · {e.oldDisplay} →{" "}
+                        {t.col_order_num} {e.orderNum} · {e.columnLabel} · {e.oldDisplay} →{" "}
                         {e.newDisplay}
                       </p>
                       <button
@@ -866,7 +872,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                         disabled={undoingId !== null}
                         onClick={() => void onHistoryUndo(e)}
                       >
-                        {undoingId === e.id ? "되돌리는 중…" : "되돌리기"}
+                        {undoingId === e.id ? t.btn_reverting : t.btn_revert}
                       </button>
                     </li>
                   ))}
@@ -883,7 +889,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
         className="fixed bottom-20 right-4 z-[90] rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-md hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
         onClick={() => setHistoryOpen(true)}
       >
-        변경 이력{history.length > 0 ? ` (${history.length})` : ""}
+        {t.btn_history}{history.length > 0 ? ` (${history.length})` : ""}
       </button>
 
       {/* 필터 바 — crm-subheader-portal */}
@@ -902,17 +908,17 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                       : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
                   }`}
                 >
-                  작성 상태
-                  {statusFilter === "done" ? " · 완료" : statusFilter === "todo" ? " · 미작성" : ""}
+                  {t.ship_filter_status}
+                  {statusFilter === "done" ? ` · ${t.ship_filter_done}` : statusFilter === "todo" ? ` · ${t.ship_filter_todo}` : ""}
                   <span className="text-xs opacity-50">▾</span>
                 </button>
                 {openFilter && (
                   <div className="absolute left-0 top-full z-50 mt-1 min-w-[150px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
                     {(
                       [
-                        { label: "전체", value: "" },
-                        { label: "작성 완료", value: "done" },
-                        { label: "미작성", value: "todo" },
+                        { label: t.filter_all, value: "" },
+                        { label: t.ship_filter_done, value: "done" },
+                        { label: t.ship_filter_todo, value: "todo" },
                       ] as { label: string; value: "" | "done" | "todo" }[]
                     ).map((opt) => (
                       <button
@@ -942,7 +948,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                   onClick={() => setStatusFilter("")}
                   className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
                 >
-                  초기화
+                  {t.ship_filter_reset}
                 </button>
               )}
 
@@ -953,13 +959,13 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                 disabled={isDownloading}
                 className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
               >
-                {isDownloading ? "다운로드 중…" : "엑셀 다운로드"}
+                {isDownloading ? t.ship_excel_downloading : t.ship_excel_download}
               </button>
 
               {/* 검색 */}
               <input
                 type="text"
-                placeholder="주문번호 검색…"
+                placeholder={t.ship_search_placeholder}
                 className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                 style={{ minWidth: "200px" }}
                 value={searchQuery}
@@ -973,18 +979,23 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
       {/* 통계 + 안내 */}
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">배송 관리</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t.page_shipping}</h1>
         </div>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          총 {orders.length}건 · 작성완료{" "}
+          {t.ship_stats_shown} {filteredOrders.length} · {t.ship_stats_done}{" "}
           <span className="font-medium text-emerald-600 dark:text-emerald-400">
-            {doneCount}
+            {shippingDoneCount}
           </span>
-          건 · 미작성{" "}
+          {" · "}{t.ship_stats_todo}{" "}
           <span className="font-medium text-zinc-700 dark:text-zinc-300">
-            {todoCount}
+            {shippingTodoCount}
           </span>
-          건 · 표시 {filteredOrders.length}건 · 테이블을 드래그하면 좌우로 스크롤됩니다.
+          {!searchQuery && ordersDoneCount > 0 && (
+            <span className="ml-2 text-zinc-400 dark:text-zinc-500">
+              · DONE {ordersDoneCount}{t.ship_stats_hidden}
+            </span>
+          )}
+          {" · "}{t.ship_drag_hint}
         </p>
       </div>
 
@@ -1016,21 +1027,21 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
             </colgroup>
             <thead>
               <tr>
-                <th className={thClass}>#</th>
-                <th className={thClass}>주문번호</th>
-                <th className={thClass}>주문일자</th>
-                <th className={`${thClass} text-left`}>상품명</th>
+                <th className={thClass}>{t.col_num}</th>
+                <th className={thClass}>{t.col_order_num}</th>
+                <th className={thClass}>{t.col_date}</th>
+                <th className={`${thClass} text-left`}>{t.col_product_name}</th>
                 <th style={{ width: W.downloaded, minWidth: W.downloaded }} className={thClass}>
-                  다운
+                  {t.ship_col_down}
                 </th>
-                <th className={thClass}>수취인명</th>
-                <th className={thClass}>연락처</th>
-                <th className={thClass}>이메일</th>
-                <th className={thClass}>우편번호</th>
-                <th className={thClass}>지역</th>
-                <th className={thClass}>도시</th>
-                <th className={`${thClass} text-left`}>주소</th>
-                <th className={`${thClass} border-r-0`}>통관번호</th>
+                <th className={thClass}>{t.ship_col_recipient}</th>
+                <th className={thClass}>{t.ship_col_phone}</th>
+                <th className={thClass}>{t.ship_col_email}</th>
+                <th className={thClass}>{t.ship_col_zip}</th>
+                <th className={thClass}>{t.ship_col_region}</th>
+                <th className={thClass}>{t.ship_col_city}</th>
+                <th className={`${thClass} text-left`}>{t.ship_col_address}</th>
+                <th className={`${thClass} border-r-0`}>{t.ship_col_customs}</th>
               </tr>
             </thead>
           </table>
@@ -1044,7 +1055,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
           return (
             <div className="sticky z-20 flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-3 py-1.5 dark:border-sky-800 dark:bg-sky-950/40" style={{ top: 108 }}>
               <span className="shrink-0 text-xs font-semibold text-sky-600 dark:text-sky-400">
-                {FIELD_LABELS[focusedCell.field]}
+                {fieldLabels[focusedCell.field]}
               </span>
               {isActiveEdit ? (
                 <input
@@ -1065,14 +1076,14 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                     if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
                   }}
                   className="flex-1 rounded border border-emerald-400 bg-white px-2 py-0.5 text-sm text-zinc-900 outline-none focus:ring-1 focus:ring-emerald-400 dark:bg-zinc-900 dark:text-zinc-100"
-                  placeholder={FIELD_LABELS[focusedCell.field]}
+                  placeholder={fieldLabels[focusedCell.field]}
                 />
               ) : (
                 <span
                   className="flex-1 cursor-pointer rounded px-2 py-0.5 text-sm text-zinc-700 hover:bg-sky-100 dark:text-zinc-300 dark:hover:bg-sky-900/30 break-all"
                   onClick={() => startEdit(focusedCell.orderNum, focusedCell.field, savedVal)}
                 >
-                  {savedVal.trim() || <span className="text-zinc-400 dark:text-zinc-600">（비어 있음）</span>}
+                  {savedVal.trim() || <span className="text-zinc-400 dark:text-zinc-600">{t.ship_empty_cell}</span>}
                 </span>
               )}
             </div>
@@ -1083,7 +1094,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
         <div ref={tableRef} className="overflow-x-auto">
           {filteredOrders.length === 0 ? (
             <p className="px-4 py-8 text-sm text-zinc-500 dark:text-zinc-400">
-              {searchQuery || statusFilter ? "검색 결과가 없습니다." : "주문이 없습니다."}
+              {searchQuery || statusFilter ? t.state_no_results : t.ship_no_orders}
             </p>
           ) : (
             <table
@@ -1108,6 +1119,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
               <tbody>
                 {filteredOrders.map((order, idx) => {
                   const done = isComplete(order);
+                  const isOrderDone = order.progress === "DONE";
                   const downloaded = order.shipping?.downloaded ?? false;
                   const rowBg = downloaded
                     ? "bg-blue-50 dark:bg-blue-950/20"
@@ -1117,7 +1129,11 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                   const s = order.shipping;
 
                   return (
-                    <tr key={order.order_num} data-row-idx={idx} className={`${rowBg} hover:brightness-95`}>
+                    <tr
+                      key={order.order_num}
+                      data-row-idx={idx}
+                      className={`${rowBg} hover:brightness-95 ${isOrderDone ? "opacity-50" : ""}`}
+                    >
                       {/* # */}
                       <td className={`${tdBase} text-center text-xs text-zinc-400`}>
                         {idx + 1}
@@ -1125,7 +1141,14 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
 
                       {/* 주문번호 */}
                       <td className={`${tdBase} whitespace-nowrap font-mono text-xs`}>
-                        {order.order_num}
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span>{order.order_num}</span>
+                          {isOrderDone && (
+                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                              DONE
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 주문일자 */}
@@ -1196,14 +1219,14 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                                   }
                                 }}
                                 className={`w-full rounded border border-emerald-400 bg-white px-1 py-0.5 text-zinc-900 outline-none focus:ring-1 focus:ring-emerald-400 dark:bg-zinc-900 dark:text-zinc-100 ${isSmall ? "text-xs" : "text-sm"}`}
-                                placeholder={FIELD_LABELS[field]}
+                                placeholder={fieldLabels[field]}
                               />
                             ) : (
                               <button type="button" className={cellBtn}>
                                 <span
                                   className={`${isSmall ? "text-xs" : ""} ${raw.trim() ? "" : "text-zinc-400 dark:text-zinc-600"}`}
                                 >
-                                  {raw.trim() ? raw : FIELD_LABELS[field]}
+                                  {raw.trim() ? raw : fieldLabels[field]}
                                 </span>
                               </button>
                             )}

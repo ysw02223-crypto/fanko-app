@@ -1,8 +1,14 @@
+"use client";
+
 import { signOut } from "@/lib/actions/auth";
 import Link from "next/link";
 import { NavMenu } from "@/components/nav-menu";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useT } from "@/lib/i18n";
 
 export function CrmShell({ email, children }: { email: string; children: React.ReactNode }) {
+  const t = useT();
+
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
@@ -14,13 +20,14 @@ export function CrmShell({ email, children }: { email: string; children: React.R
             <NavMenu />
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+            <LanguageSwitcher />
             <span className="hidden max-w-[200px] truncate sm:inline">{email}</span>
             <form action={signOut}>
               <button
                 type="submit"
                 className="rounded-lg border border-zinc-200 px-3 py-1.5 font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
               >
-                로그아웃
+                {t.btn_logout}
               </button>
             </form>
           </div>

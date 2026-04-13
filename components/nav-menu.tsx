@@ -3,40 +3,37 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
+import { useT } from "@/lib/i18n";
 
-type SubItem = { label: string; href: string };
-
-type TopMenu = {
-  label: string;
-  items: SubItem[];
-  disabled?: boolean;
-};
-
-const TOP_MENUS: TopMenu[] = [
-  {
-    label: "러시아 주문",
-    items: [
-      { label: "주문 목록", href: "/orders" },
-      { label: "주문 추가", href: "/orders/new" },
-      { label: "배송 관리", href: "/shipping" },
-      { label: "변경 이력", href: "/history" },
-    ],
-  },
-  {
-    label: "재무관리",
-    items: [
-      { label: "재무 대시보드", href: "/finance" },
-      { label: "수입 목록", href: "/finance/income" },
-      { label: "지출 목록", href: "/finance/expense" },
-      { label: "환전 관리", href: "/finance/exchange" },
-    ],
-  },
-];
+type SubItem = { labelKey: string; href: string };
+type TopMenu = { labelKey: string; items: SubItem[]; disabled?: boolean };
 
 export function NavMenu() {
   const pathname = usePathname();
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
+  const t = useT();
+
+  const TOP_MENUS: TopMenu[] = [
+    {
+      labelKey: "nav_russia_orders",
+      items: [
+        { labelKey: "nav_order_list", href: "/orders" },
+        { labelKey: "nav_order_new", href: "/orders/new" },
+        { labelKey: "nav_shipping", href: "/shipping" },
+        { labelKey: "nav_history", href: "/history" },
+      ],
+    },
+    {
+      labelKey: "nav_finance",
+      items: [
+        { labelKey: "nav_finance_dashboard", href: "/finance" },
+        { labelKey: "nav_income_list", href: "/finance/income" },
+        { labelKey: "nav_expense_list", href: "/finance/expense" },
+        { labelKey: "nav_exchange", href: "/finance/exchange" },
+      ],
+    },
+  ];
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -63,17 +60,17 @@ export function NavMenu() {
         if (menu.disabled) {
           return (
             <span
-              key={menu.label}
-              title="준비 중"
+              key={menu.labelKey}
+              title={t.nav_coming_soon}
               className="cursor-not-allowed rounded-md px-3 py-1.5 text-sm font-medium text-zinc-300 select-none dark:text-zinc-600"
             >
-              {menu.label}
+              {t[menu.labelKey as keyof typeof t]}
             </span>
           );
         }
 
         return (
-          <div key={menu.label} className="relative">
+          <div key={menu.labelKey} className="relative">
             <button
               onClick={() => setOpenIdx(isOpen ? null : idx)}
               className={`flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition ${
@@ -82,7 +79,7 @@ export function NavMenu() {
                   : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
               }`}
             >
-              {menu.label}
+              {t[menu.labelKey as keyof typeof t]}
               <svg
                 className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`}
                 viewBox="0 0 20 20"
@@ -113,7 +110,7 @@ export function NavMenu() {
                           : "text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                       }`}
                     >
-                      {item.label}
+                      {t[item.labelKey as keyof typeof t]}
                     </Link>
                   );
                 })}

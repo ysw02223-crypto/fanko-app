@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { syncOrderProgressFromItemsAction } from "@/lib/actions/shipping";
+import { insertOrderHistoryAction, type InsertHistoryEntry } from "@/lib/actions/order-history";
 import {
   flattenOrders,
   replaceOrderSegment,
@@ -21,6 +22,7 @@ import { DeliveryImportButton } from "@/components/delivery-import-button";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useT } from "@/lib/i18n";
 
 const ORDER_SELECT = `
   *,
@@ -89,6 +91,7 @@ type HistoryEntry = {
   columnLabel: string;
   oldDisplay: string;
   newDisplay: string;
+  changedBy: "수동변경" | "드래그채우기";
   revert: () => Promise<void>;
 };
 
@@ -262,6 +265,7 @@ const TOP_GROUP = ["PAY", "BUY IN KOREA", "ARRIVE KOR", "IN DELIVERY"];
 const CLICK_SLOP_PX = 5;
 
 export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWithNestedItems[] }) {
+  const t = useT();
   const [flatRows, setFlatRows] = useState<FlatOrderItemRow[]>(() => flattenOrders(initialOrders));
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [focusedCell, setFocusedCell] = useState<EditTarget | null>(null);
@@ -618,12 +622,20 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         await syncOrderProgressFromItemsAction(orderNum);
       }
       await fetchOrders();
+      void insertOrderHistoryAction({
+        order_num: orderNum,
+        field,
+        old_value: prevValue != null ? String(prevValue) : null,
+        new_value: value != null ? String(value) : null,
+        changed_by: "수동변경",
+      });
       pushHistory({
         field,
         orderNum,
         columnLabel: (ITEM_FIELD_LABELS as Record<string, string>)[field] ?? field,
         oldDisplay: String(prevValue ?? "—"),
         newDisplay: String(value ?? "—"),
+        changedBy: "수동변경",
         revert: async () => {
           const supa = createClient();
           const { error: revertErr } = await supa
@@ -805,12 +817,20 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         }
         await fetchOrders();
         const revertPayload = buildOrderRevertPayload(field, oldRaw);
+        void insertOrderHistoryAction({
+          order_num: orderNum,
+          field,
+          old_value: displayOrderField(field, oldRaw) === "—" ? null : displayOrderField(field, oldRaw),
+          new_value: displayOrderField(field, newRaw) === "—" ? null : displayOrderField(field, newRaw),
+          changed_by: "수동변경",
+        });
         pushHistory({
           field,
           orderNum,
           columnLabel: ORDER_FIELD_LABELS[field],
           oldDisplay: displayOrderField(field, oldRaw),
           newDisplay: displayOrderField(field, newRaw),
+          changedBy: "수동변경",
           revert: async () => {
             await runOrderRevert(orderNum, revertPayload);
           },
@@ -856,6 +876,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           return false;
         }
         await fetchOrders();
+
+        // 수동변경 이력을 자동변경 블록보다 먼저 기록 (created_at 순서 보장)
+        void insertOrderHistoryAction({
+          order_num: orderNum,
+          field,
+          old_value: displayItemField(field, oldRaw) === "—" ? null : displayItemField(field, oldRaw),
+          new_value: displayItemField(field, newRaw) === "—" ? null : displayItemField(field, newRaw),
+          changed_by: "수동변경",
+        });
 
         // krw 저장 성공 후 PAY → BUY IN KOREA 자동 트리거 (해당 아이템만)
         if (field === "krw" && newRaw.trim() !== "") {
@@ -918,6 +947,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           columnLabel: ITEM_FIELD_LABELS[field],
           oldDisplay: displayItemField(field, oldRaw),
           newDisplay: displayItemField(field, newRaw),
+          changedBy: "수동변경",
           revert: async () => {
             await runItemRevertThenRefresh(itemId, orderNum, revertUpdates);
           },
@@ -986,10 +1016,14 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       if (targets.length === 0) return;
 
       let successCount = 0;
+      // order 필드는 같은 order_num에 중복 쿼리 방지
+      const processedOrderNums = new Set<string>();
+      const historyEntries: InsertHistoryEntry[] = [];
 
       for (const row of targets) {
         if (drag.kind === "item") {
           const field = drag.field as ItemEditableField;
+          const oldRaw = String((row.item as Record<string, unknown>)[field] ?? "");
           const built = buildItemUpdates(field, drag.value, row.item);
           if ("error" in built) continue;
           const { error } = await supabase
@@ -998,6 +1032,13 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
             .eq("id", row.item.id);
           if (!error) {
             successCount++;
+            historyEntries.push({
+              order_num: row.order.order_num,
+              field,
+              old_value: displayItemField(field, oldRaw) === "—" ? null : displayItemField(field, oldRaw),
+              new_value: displayItemField(field, drag.value) === "—" ? null : displayItemField(field, drag.value),
+              changed_by: "드래그채우기",
+            });
             if (field === "progress" && drag.value === "IN DELIVERY") {
               await syncOrderProgressFromItemsAction(row.order.order_num);
             }
@@ -1006,19 +1047,52 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           const field = drag.field as OrderEditableField;
           const built = buildOrderPayload(field, drag.value);
           if ("error" in built) continue;
+          if (processedOrderNums.has(row.order.order_num)) continue;
+          processedOrderNums.add(row.order.order_num);
+          const oldRaw = String((row.order as Record<string, unknown>)[field] ?? "");
           const { error } = await supabase
             .from("orders")
             .update(built.payload)
             .eq("order_num", row.order.order_num);
-          if (!error) successCount++;
+          if (!error) {
+            successCount++;
+            historyEntries.push({
+              order_num: row.order.order_num,
+              field,
+              old_value: displayOrderField(field, oldRaw) === "—" ? null : displayOrderField(field, oldRaw),
+              new_value: displayOrderField(field, drag.value) === "—" ? null : displayOrderField(field, drag.value),
+              changed_by: "드래그채우기",
+            });
+          }
         }
       }
 
       await fetchOrders();
+
+      if (historyEntries.length > 0) {
+        void insertOrderHistoryAction(historyEntries);
+        const first = historyEntries[0];
+        const fieldLabel =
+          (ITEM_FIELD_LABELS as Record<string, string>)[first.field] ??
+          (ORDER_FIELD_LABELS as Record<string, string>)[first.field] ??
+          first.field;
+        pushHistory({
+          field: first.field,
+          orderNum: historyEntries.map((e) => e.order_num).join(", "),
+          columnLabel: fieldLabel,
+          oldDisplay: historyEntries.length === 1
+            ? (historyEntries[0].old_value ?? "—")
+            : `(${historyEntries.length}건 다름)`,
+          newDisplay: `${drag.value} (${historyEntries.length}건)`,
+          changedBy: "드래그채우기",
+          revert: async () => { /* batchFill revert 미지원 */ },
+        });
+      }
+
       setToastType("success");
       setToast(`${successCount}개 행에 값이 채워졌습니다.`);
     },
-    [filteredRows, buildItemUpdates, buildOrderPayload, fetchOrders],
+    [filteredRows, buildItemUpdates, buildOrderPayload, fetchOrders, pushHistory],
   );
 
   // 드래그 채우기 글로벌 이벤트
@@ -1233,19 +1307,19 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           <button type="button" className="h-full flex-1 cursor-default" aria-label="닫기" onClick={() => setHistoryOpen(false)} />
           <div className="flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">변경 이력 (최근 30개)</p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{t.history_panel_title}</p>
               <button
                 type="button"
                 className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 onClick={() => setHistoryOpen(false)}
               >
-                닫기
+                {t.btn_close}
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3">
-              <p className="mb-2 text-xs text-gray-400">Ctrl+Z로 마지막 변경을 되돌릴 수 있습니다</p>
+              <p className="mb-2 text-xs text-gray-400">{t.history_panel_hint}</p>
               {history.length === 0 ? (
-                <p className="text-sm text-zinc-500">아직 기록된 변경이 없습니다.</p>
+                <p className="text-sm text-zinc-500">{t.state_no_changes}</p>
               ) : (
                 <ul className="flex flex-col gap-3">
                   {history.map((e) => (
@@ -1259,17 +1333,30 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                           timeStyle: "medium",
                         })}
                       </p>
-                      <p className="mt-1 text-zinc-800 dark:text-zinc-200">
-                        주문 {e.orderNum} · {e.columnLabel} · {e.oldDisplay} → {e.newDisplay}
-                      </p>
-                      <button
-                        type="button"
-                        className="mt-2 rounded-lg bg-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-300 disabled:opacity-50 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
-                        disabled={undoingId !== null}
-                        onClick={() => void onHistoryUndo(e)}
-                      >
-                        {undoingId === e.id ? "되돌리는 중…" : "되돌리기"}
-                      </button>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span
+                          className={
+                            e.changedBy === "드래그채우기"
+                              ? "rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                              : "rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
+                          }
+                        >
+                          {e.changedBy === "드래그채우기" ? t.badge_drag : t.badge_manual}
+                        </span>
+                        <p className="text-zinc-800 dark:text-zinc-200">
+                          주문 {e.orderNum} · {e.columnLabel} · {e.oldDisplay} → {e.newDisplay}
+                        </p>
+                      </div>
+                      {e.changedBy !== "드래그채우기" && (
+                        <button
+                          type="button"
+                          className="mt-2 rounded-lg bg-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-300 disabled:opacity-50 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+                          disabled={undoingId !== null}
+                          onClick={() => void onHistoryUndo(e)}
+                        >
+                          {undoingId === e.id ? t.btn_reverting : t.btn_revert}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -1284,7 +1371,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         className="fixed bottom-20 right-4 z-[90] rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-md hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
         onClick={() => setHistoryOpen(true)}
       >
-        변경 이력 {history.length > 0 ? `(${history.length})` : ""}
+        {t.btn_history} {history.length > 0 ? `(${history.length})` : ""}
       </button>
 
       {/* 필터 바 — crm-subheader-portal (main 바깥 sticky 슬롯)으로 portal 렌더링 */}
@@ -1292,45 +1379,45 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         <div className="w-full border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
           <div className="flex flex-wrap items-center gap-2">
             <FilterDropdown
-              label="진행"
+              label={t.filter_progress}
               field="progress"
-              options={[{ label: "전체", value: "" }, ...ORDER_PROGRESS.map((p) => ({ label: p, value: p }))]}
+              options={[{ label: t.filter_all, value: "" }, ...ORDER_PROGRESS.map((p) => ({ label: p, value: p }))]}
             />
             <FilterDropdown
-              label="플랫폼"
+              label={t.filter_platform}
               field="platform"
-              options={[{ label: "전체", value: "" }, ...PLATFORMS.map((p) => ({ label: p, value: p }))]}
+              options={[{ label: t.filter_all, value: "" }, ...PLATFORMS.map((p) => ({ label: p, value: p }))]}
             />
             <FilterDropdown
-              label="단품/세트"
+              label={t.filter_set_type}
               field="setType"
               options={[
-                { label: "전체", value: "" },
+                { label: t.filter_all, value: "" },
                 { label: "Single", value: "Single" },
                 { label: "SET", value: "SET" },
               ]}
             />
             <FilterDropdown
-              label="선물"
+              label={t.filter_gift}
               field="gift"
               options={[
-                { label: "전체", value: "" },
+                { label: t.filter_all, value: "" },
                 { label: "no", value: "no" },
                 { label: "ask", value: "ask" },
               ]}
             />
             <FilterDropdown
-              label="사진"
+              label={t.filter_photo}
               field="photoSent"
-              options={[{ label: "전체", value: "" }, ...PHOTO_STATUS.map((s) => ({ label: s, value: s }))]}
+              options={[{ label: t.filter_all, value: "" }, ...PHOTO_STATUS.map((s) => ({ label: s, value: s }))]}
             />
             <FilterDropdown
-              label="잔금"
+              label={t.filter_balance}
               field="hasBalance"
               options={[
-                { label: "전체", value: "" },
-                { label: "잔금 있음", value: "yes" },
-                { label: "잔금 없음", value: "no" },
+                { label: t.filter_all, value: "" },
+                { label: t.filter_has_balance, value: "yes" },
+                { label: t.filter_no_balance, value: "no" },
               ]}
             />
             {hasActiveFilter && (
@@ -1371,11 +1458,11 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           <table
             ref={headerTableRef}
             className="min-w-full border-collapse text-left text-sm"
-            style={{ tableLayout: "fixed", width: "100%", minWidth: 2208 }}
+            style={{ tableLayout: "fixed", width: "100%", minWidth: 2152 }}
           >
             <colgroup>
               <col style={{ width: "32px" }} />
-              <col style={{ width: "46px" }} />
+              <col style={{ width: "90px" }} />
               <col style={{ width: "90px" }} />
               <col style={{ width: "320px" }} />
               <col style={{ width: "180px" }} />
@@ -1383,7 +1470,6 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <col style={{ width: "72px" }} />
               <col style={{ width: "52px" }} />
               <col style={{ width: "88px" }} />
-              <col style={{ width: "100px" }} />
               <col style={{ width: "72px" }} />
               <col style={{ width: "72px" }} />
               <col style={{ width: "140px" }} />
@@ -1400,29 +1486,28 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
             </colgroup>
             <thead>
               <tr>
-                <th className={`${thClass} sticky left-0 z-30`}>#</th>
-                <th className={`${thClass} sticky left-[32px] z-30`}>날짜</th>
-                <th className={`${thClass} sticky left-[78px] z-30`}>주문번호</th>
-                <th className={`${thClass} sticky left-[168px] z-30 text-left`}>상품명</th>
-                <th className={`${thClass} text-left`}>옵션</th>
-                <th className={thClass}>진행</th>
-                <th className={thClass}>단품/세트</th>
-                <th className={thClass}>선물</th>
-                <th className={thClass}>사진</th>
-                <th className={thClass}>일자</th>
-                <th className={thClass}>플랫폼</th>
-                <th className={thClass}>경로</th>
-                <th className={thClass}>고객</th>
-                <th className={thClass}>거래처</th>
-                <th className={thClass}>카테고리</th>
-                <th className={thClass}>수량</th>
-                <th className={thClass}>판매가₽</th>
-                <th className={thClass}>원화매입</th>
-                <th className={thClass}>선결제₽</th>
-                <th className={thClass}>잔금₽</th>
-                <th className={thClass}>배송비</th>
-                <th className={thClass}>적용무게</th>
-                <th className={`${thClass} border-r-0`}>배송번호</th>
+                <th className={`${thClass} sticky left-0 z-30`}>{t.col_num}</th>
+                <th className={`${thClass} sticky left-[32px] z-30`}>{t.col_date}</th>
+                <th className={`${thClass} sticky left-[122px] z-30`}>{t.col_order_num}</th>
+                <th className={`${thClass} sticky left-[212px] z-30 text-left`}>{t.col_product_name}</th>
+                <th className={`${thClass} text-left`}>{t.col_option}</th>
+                <th className={thClass}>{t.col_progress}</th>
+                <th className={`${thClass} th-ru-xs`}>{t.col_set_type}</th>
+                <th className={`${thClass} th-ru-xs`}>{t.col_gift}</th>
+                <th className={thClass}>{t.col_photo}</th>
+                <th className={thClass}>{t.col_platform}</th>
+                <th className={thClass}>{t.col_route}</th>
+                <th className={thClass}>{t.col_customer}</th>
+                <th className={thClass}>{t.col_channel}</th>
+                <th className={thClass}>{t.col_category}</th>
+                <th className={thClass}>{t.col_quantity}</th>
+                <th className={thClass}>{t.col_price_rub}</th>
+                <th className={thClass}>{t.col_krw}</th>
+                <th className={thClass}>{t.col_prepay_rub}</th>
+                <th className={thClass}>{t.col_balance_rub}</th>
+                <th className={thClass}>{t.col_shipping_fee}</th>
+                <th className={thClass}>{t.col_weight}</th>
+                <th className={`${thClass} border-r-0`}>{t.col_tracking}</th>
               </tr>
             </thead>
           </table>
@@ -1530,11 +1615,11 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         <div ref={tableRef} style={{ overflowX: "auto", overflowY: "visible" }}>
           <table
             className="min-w-full border-collapse text-left text-sm"
-            style={{ tableLayout: "fixed", width: "100%", minWidth: 2208 }}
+            style={{ tableLayout: "fixed", width: "100%", minWidth: 2152 }}
           >
             <colgroup>
               <col style={{ width: "32px" }} />
-              <col style={{ width: "46px" }} />
+              <col style={{ width: "90px" }} />
               <col style={{ width: "90px" }} />
               <col style={{ width: "320px" }} />
               <col style={{ width: "180px" }} />
@@ -1542,7 +1627,6 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
               <col style={{ width: "72px" }} />
               <col style={{ width: "52px" }} />
               <col style={{ width: "88px" }} />
-              <col style={{ width: "100px" }} />
               <col style={{ width: "72px" }} />
               <col style={{ width: "72px" }} />
               <col style={{ width: "140px" }} />
@@ -1559,36 +1643,35 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
             </colgroup>
             <thead className="sr-only">
               <tr>
-                <th className={`${thClass} sticky left-0 z-30`}>#</th>
-                <th className={`${thClass} sticky left-[32px] z-30`}>날짜</th>
-                <th className={`${thClass} sticky left-[78px] z-30`}>주문번호</th>
-                <th className={`${thClass} sticky left-[168px] z-30 text-left`}>상품명</th>
-                <th className={`${thClass} text-left`}>옵션</th>
-                <th className={thClass}>진행</th>
-                <th className={thClass}>단품/세트</th>
-                <th className={thClass}>선물</th>
-                <th className={thClass}>사진</th>
-                <th className={thClass}>일자</th>
-                <th className={thClass}>플랫폼</th>
-                <th className={thClass}>경로</th>
-                <th className={thClass}>고객</th>
-                <th className={thClass}>거래처</th>
-                <th className={thClass}>카테고리</th>
-                <th className={thClass}>수량</th>
-                <th className={thClass}>판매가₽</th>
-                <th className={thClass}>원화매입</th>
-                <th className={thClass}>선결제₽</th>
-                <th className={thClass}>잔금₽</th>
-                <th className={thClass}>배송비</th>
-                <th className={thClass}>적용무게</th>
-                <th className={`${thClass} border-r-0`}>배송번호</th>
+                <th className={`${thClass} sticky left-0 z-30`}>{t.col_num}</th>
+                <th className={`${thClass} sticky left-[32px] z-30`}>{t.col_date}</th>
+                <th className={`${thClass} sticky left-[122px] z-30`}>{t.col_order_num}</th>
+                <th className={`${thClass} sticky left-[212px] z-30 text-left`}>{t.col_product_name}</th>
+                <th className={`${thClass} text-left`}>{t.col_option}</th>
+                <th className={thClass}>{t.col_progress}</th>
+                <th className={`${thClass} th-ru-xs`}>{t.col_set_type}</th>
+                <th className={`${thClass} th-ru-xs`}>{t.col_gift}</th>
+                <th className={thClass}>{t.col_photo}</th>
+                <th className={thClass}>{t.col_platform}</th>
+                <th className={thClass}>{t.col_route}</th>
+                <th className={thClass}>{t.col_customer}</th>
+                <th className={thClass}>{t.col_channel}</th>
+                <th className={thClass}>{t.col_category}</th>
+                <th className={thClass}>{t.col_quantity}</th>
+                <th className={thClass}>{t.col_price_rub}</th>
+                <th className={thClass}>{t.col_krw}</th>
+                <th className={thClass}>{t.col_prepay_rub}</th>
+                <th className={thClass}>{t.col_balance_rub}</th>
+                <th className={thClass}>{t.col_shipping_fee}</th>
+                <th className={thClass}>{t.col_weight}</th>
+                <th className={`${thClass} border-r-0`}>{t.col_tracking}</th>
               </tr>
             </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={22} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
-                  검색 결과가 없습니다.
+                <td colSpan={21} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                  {t.state_no_results}
                 </td>
               </tr>
             ) : null}
@@ -1612,21 +1695,48 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     {idx + 1}
                   </td>
 
-                  {/* 날짜 */}
+                  {/* 일자 — order 필드 */}
                   <td
-                    className={`${tdBase} sticky z-10 whitespace-nowrap border-r-gray-300 text-xs text-gray-500 ${dateBgClass(computedExtra(item))}`}
-                    style={{ left: "32px", width: "46px", minWidth: "46px" }}
+                    className={`${tdBase} sticky z-10 whitespace-nowrap border-r-gray-300 ${isEditingOrder(rowKey, "date") ? editingBg : whiteBg}`}
+                    style={{ left: "32px", width: "90px", minWidth: "90px" }}
                   >
-                    {order.date ? (() => {
-                      const d = new Date(order.date);
-                      return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-                    })() : "—"}
+                    {isEditingOrder(rowKey, "date") ? (
+                      <input
+                        ref={inputRef}
+                        type="date"
+                        title={t.order_field_applies_all}
+                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                        value={draft}
+                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                        onBlur={(e) => {
+                          if (e.relatedTarget === barInputRef.current) return;
+                          const cur = editingRef.current;
+                          if (!cur || cur.kind !== "order" || cur.rowKey !== rowKey || cur.field !== "date") return;
+                          const d = draftRef.current; const b = editBaselineRef.current;
+                          editingRef.current = null;
+                          void saveOrderField(on, "date", d, b);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        title={t.order_field_applies_all}
+                        className={cellBtn}
+                        onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "date" }, order.date?.slice(0, 10) ?? "")}
+                      >
+                        {order.date?.slice(0, 10) ?? "—"}
+                      </button>
+                    )}
                   </td>
 
                   {/* 주문번호 */}
                   <td
                     className={`${tdBase} sticky z-10 border-r-gray-300 font-semibold ${orderBg}`}
-                    style={{ left: "78px", width: "90px", minWidth: "90px" }}
+                    style={{ left: "122px", width: "90px", minWidth: "90px" }}
                   >
                     <Link
                       href={`/orders/${encodeURIComponent(on)}`}
@@ -1639,7 +1749,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   {/* 상품명 */}
                   <td
                     className={`${tdBase} relative sticky z-10 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : isFillHighlight(idx, "product_name", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getProgressBgColor(itemProgress)}`}
-                    style={{ left: "168px", width: "320px", minWidth: "320px" }}
+                    style={{ left: "212px", width: "320px", minWidth: "320px" }}
                     title={item.product_name}
                   >
                     {isEditingItem(id, "product_name") ? (
@@ -1844,44 +1954,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 일자 */}
-                  <td className={`${tdBase} whitespace-nowrap ${isEditingOrder(rowKey, "date") ? editingBg : whiteBg}`}>
-                    {isEditingOrder(rowKey, "date") ? (
-                      <input
-                        ref={inputRef}
-                        type="date"
-                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
-                        value={draft}
-                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
-                        onBlur={(e) => {
-                          if (e.relatedTarget === barInputRef.current) return;
-                          const cur = editingRef.current;
-                          if (!cur || cur.kind !== "order" || cur.rowKey !== rowKey || cur.field !== "date") return;
-                          const d = draftRef.current; const b = editBaselineRef.current;
-                          editingRef.current = null;
-                          void saveOrderField(on, "date", d, b);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                          if (e.key === "Escape") cancelEdit();
-                        }}
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        className={cellBtn}
-                        onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "date" }, order.date?.slice(0, 10) ?? "")}
-                      >
-                        {order.date?.slice(0, 10) ?? "—"}
-                      </button>
-                    )}
-                  </td>
-
-                  {/* 플랫폼 */}
+                  {/* 플랫폼 — order 필드: 모든 행 편집 가능, 저장 시 주문 전체 적용 */}
                   <td className={`${tdBase} relative ${isEditingOrder(rowKey, "platform") ? editingBg : isFillHighlight(idx, "platform", "order") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingOrder(rowKey, "platform") ? (
                       <select
                         ref={selectRef}
+                        title={t.order_field_applies_all}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => {
@@ -1897,6 +1975,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     ) : (
                       <button
                         type="button"
+                        title={t.order_field_applies_all}
                         className={cellBtn}
                         onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "platform" }, order.platform)}
                       >
@@ -1908,11 +1987,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 경로 */}
+                  {/* 경로 — order 필드: 모든 행 편집 가능, 저장 시 주문 전체 적용 */}
                   <td className={`${tdBase} relative ${isEditingOrder(rowKey, "order_type") ? editingBg : isFillHighlight(idx, "order_type", "order") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingOrder(rowKey, "order_type") ? (
                       <select
                         ref={selectRef}
+                        title={t.order_field_applies_all}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => {
@@ -1928,6 +2008,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     ) : (
                       <button
                         type="button"
+                        title={t.order_field_applies_all}
                         className={cellBtn}
                         onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "order_type" }, order.order_type)}
                       >
@@ -1939,11 +2020,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 고객 */}
+                  {/* 고객 — order 필드: 모든 행 편집 가능, 저장 시 주문 전체 적용 */}
                   <td className={`${tdBase} relative ${isEditingOrder(rowKey, "customer_name") ? editingBg : isFillHighlight(idx, "customer_name", "order") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingOrder(rowKey, "customer_name") ? (
                       <input
                         ref={inputRef}
+                        title={t.order_field_applies_all}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
@@ -1964,7 +2046,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                       <button
                         type="button"
                         className={`${cellBtn} truncate`}
-                        title={order.customer_name ?? ""}
+                        title={order.customer_name ?? t.order_field_applies_all}
                         onClick={() =>
                           startEdit({ kind: "order", rowKey, orderNum: on, field: "customer_name" }, order.customer_name ?? "")
                         }
@@ -1977,11 +2059,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                     )}
                   </td>
 
-                  {/* 거래처 */}
+                  {/* 거래처 — order 필드: 모든 행 편집 가능, 저장 시 주문 전체 적용 */}
                   <td className={`${tdBase} relative ${isEditingOrder(rowKey, "purchase_channel") ? editingBg : isFillHighlight(idx, "purchase_channel", "order") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : whiteBg}`}>
                     {isEditingOrder(rowKey, "purchase_channel") ? (
                       <input
                         ref={inputRef}
+                        title={t.order_field_applies_all}
                         className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
                         value={draft}
                         onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
@@ -2002,7 +2085,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                       <button
                         type="button"
                         className={`${cellBtn} truncate`}
-                        title={order.purchase_channel ?? ""}
+                        title={order.purchase_channel ?? t.order_field_applies_all}
                         onClick={() =>
                           startEdit(
                             { kind: "order", rowKey, orderNum: on, field: "purchase_channel" },

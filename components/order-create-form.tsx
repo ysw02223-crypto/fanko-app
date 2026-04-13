@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ORDER_PROGRESS, ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES } from "@/lib/schema";
 import { inputClass, labelClass, selectClass } from "@/lib/form-classes";
 import React, { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useT } from "@/lib/i18n";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -144,6 +145,7 @@ function wPx(n: number): React.CSSProperties {
 // ── component ──────────────────────────────────────────────────────────────────
 
 export function OrderCreateForm() {
+  const t = useT();
   const today = useMemo(() => moscowTodayYmd(), []);
   const supabase = useMemo(() => createClient(), []);
 
@@ -402,7 +404,7 @@ export function OrderCreateForm() {
           />
           <div className="flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">추가 이력</p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{t.form_recent_panel_title}</p>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -410,22 +412,22 @@ export function OrderCreateForm() {
                   disabled={recentLoading}
                   className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800"
                 >
-                  {recentLoading ? "로딩…" : "새로고침"}
+                  {recentLoading ? t.state_loading : t.btn_refresh}
                 </button>
                 <button
                   type="button"
                   className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   onClick={() => setHistoryOpen(false)}
                 >
-                  닫기
+                  {t.btn_close}
                 </button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">
               {recentLoading && recentOrders.length === 0 ? (
-                <p className="p-6 text-center text-sm text-zinc-400">불러오는 중…</p>
+                <p className="p-6 text-center text-sm text-zinc-400">{t.state_loading}</p>
               ) : recentOrders.length === 0 ? (
-                <p className="p-6 text-center text-sm text-zinc-400">최근 주문이 없습니다.</p>
+                <p className="p-6 text-center text-sm text-zinc-400">{t.form_recent_empty}</p>
               ) : (
                 <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {recentOrders.map((order) => {
@@ -457,7 +459,7 @@ export function OrderCreateForm() {
                             >
                               {order.progress}
                             </span>
-                            <span className="text-xs text-zinc-400">불러오기 →</span>
+                            <span className="text-xs text-zinc-400">{t.form_recent_load_btn}</span>
                           </div>
                         </div>
                         <div className="flex items-baseline gap-2 text-xs text-zinc-500">
@@ -494,7 +496,7 @@ export function OrderCreateForm() {
         className="fixed bottom-6 right-6 z-50 rounded-full bg-gray-800 px-4 py-2 text-xs font-semibold text-white shadow-lg hover:bg-gray-700 dark:bg-zinc-700 dark:hover:bg-zinc-600"
         onClick={() => setHistoryOpen(true)}
       >
-        추가 이력 {recentOrders.length > 0 ? `(${recentOrders.length})` : ""}
+        {t.form_recent_btn} {recentOrders.length > 0 ? `(${recentOrders.length})` : ""}
       </button>
 
       {/* ── 주문 입력 폼 ── */}
@@ -505,7 +507,7 @@ export function OrderCreateForm() {
         {/* 제목 */}
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
-            {editMode ? `주문 수정 · ${editOrderNum}` : "새 주문"}
+            {editMode ? `${t.form_order_edit_title} · ${editOrderNum}` : t.form_order_new_title}
           </h2>
           {editMode && (
             <button
@@ -513,7 +515,7 @@ export function OrderCreateForm() {
               onClick={resetForm}
               className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
             >
-              ✕ 취소
+              {t.form_cancel_edit}
             </button>
           )}
         </div>
@@ -525,7 +527,7 @@ export function OrderCreateForm() {
           {/* 주문번호 */}
           <div className="flex flex-col gap-1">
             <label htmlFor="order_num" className={labelClass}>
-              주문번호 *
+              {t.form_label_order_num} *
             </label>
             <input
               id="order_num"
@@ -546,7 +548,7 @@ export function OrderCreateForm() {
           {/* 주문일 */}
           <div className="flex flex-col gap-1">
             <label htmlFor="date" className={labelClass}>
-              주문일 *
+              {t.form_label_order_date} *
             </label>
             <input
               id="date"
@@ -561,7 +563,7 @@ export function OrderCreateForm() {
 
           {/* 고객명 */}
           <div className="flex flex-col gap-1">
-            <label htmlFor="customer_name" className={labelClass}>고객명</label>
+            <label htmlFor="customer_name" className={labelClass}>{t.form_label_customer}</label>
             <input
               id="customer_name"
               name="customer_name"
@@ -576,7 +578,7 @@ export function OrderCreateForm() {
 
           {/* 진행상태 */}
           <div className="flex flex-col gap-1">
-            <label htmlFor="progress" className={labelClass}>진행상태 *</label>
+            <label htmlFor="progress" className={labelClass}>{t.form_label_progress} *</label>
             <select
               id="progress"
               name="progress"
@@ -593,7 +595,7 @@ export function OrderCreateForm() {
 
           {/* 선물 여부 */}
           <div className="flex flex-col gap-1">
-            <label htmlFor="gift" className={labelClass}>선물 여부</label>
+            <label htmlFor="gift" className={labelClass}>{t.form_label_gift}</label>
             <select
               id="gift"
               name="gift"
@@ -608,7 +610,7 @@ export function OrderCreateForm() {
 
           {/* 주문 경로 */}
           <div className="flex flex-col gap-1">
-            <label htmlFor="order_type" className={labelClass}>주문 경로 *</label>
+            <label htmlFor="order_type" className={labelClass}>{t.form_label_route} *</label>
             <select
               id="order_type"
               name="order_type"
@@ -626,7 +628,7 @@ export function OrderCreateForm() {
 
         {/* ── 상품 테이블 ── */}
         <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">상품</h2>
+          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{t.form_section_products}</h2>
           <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
             <table
               className="min-w-[820px] border-collapse text-left text-sm"
@@ -645,15 +647,15 @@ export function OrderCreateForm() {
               </colgroup>
               <thead>
                 <tr>
-                  <th className={`${th} min-w-[120px]`}>카테고리</th>
-                  <th className={`${th} min-w-[160px]`}>상품명 *</th>
-                  <th className={`${th} min-w-[180px]`}>옵션</th>
-                  <th className={`${th} min-w-[110px]`}>단품/세트</th>
-                  <th className={`${th} min-w-[60px] text-center`}>수량</th>
-                  <th className={`${th} min-w-[100px] text-right`}>판매가₽ *</th>
-                  <th className={`${th} min-w-[90px] text-right`}>선결제₽</th>
-                  <th className={`${th} min-w-[80px] text-right`}>잔금₽</th>
-                  <th className={`${thLast} min-w-[36px]`}>삭제</th>
+                  <th className={`${th} min-w-[120px]`}>{t.col_category}</th>
+                  <th className={`${th} min-w-[160px]`}>{t.col_product_name} *</th>
+                  <th className={`${th} min-w-[180px]`}>{t.col_option}</th>
+                  <th className={`${th} min-w-[110px]`}>{t.col_set_type}</th>
+                  <th className={`${th} min-w-[60px] text-center`}>{t.col_quantity}</th>
+                  <th className={`${th} min-w-[100px] text-right`}>{t.col_price_rub} *</th>
+                  <th className={`${th} min-w-[90px] text-right`}>{t.col_prepay_rub}</th>
+                  <th className={`${th} min-w-[80px] text-right`}>{t.col_balance_rub}</th>
+                  <th className={`${thLast} min-w-[36px]`}>{t.form_col_delete}</th>
                 </tr>
               </thead>
               <tbody>
@@ -755,7 +757,7 @@ export function OrderCreateForm() {
             onClick={addLine}
             className="w-fit rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
-            + 상품 추가
+            {t.form_add_product}
           </button>
         </div>
 
@@ -775,7 +777,7 @@ export function OrderCreateForm() {
           disabled={pending}
           className="rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
         >
-          {pending ? "저장 중…" : editMode ? "수정 저장" : "주문 저장"}
+          {pending ? t.form_saving : editMode ? t.form_save_edit : t.form_save_new}
         </button>
       </form>
     </>
