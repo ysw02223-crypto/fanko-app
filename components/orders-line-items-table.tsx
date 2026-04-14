@@ -278,10 +278,12 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [undoingId, setUndoingId] = useState<string | null>(null);
 
-  const tableRef = useRef<HTMLDivElement>(null);
-  const headerWrapRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);       // right body panel
+  const headerWrapRef = useRef<HTMLDivElement>(null);  // right header panel
   const headerTableRef = useRef<HTMLTableElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const leftTbodyRef = useRef<HTMLTableSectionElement>(null);
+  const rightTbodyRef = useRef<HTMLTableSectionElement>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const barInputRef = useRef<HTMLInputElement>(null);
@@ -529,6 +531,32 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
     bodyEl.addEventListener("scroll", onScroll);
     return () => bodyEl.removeEventListener("scroll", onScroll);
   }, []);
+
+  // Frozen panes: 좌/우 tbody 행 높이 동기화 (paint 전에 실행)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const lb = leftTbodyRef.current;
+    const rb = rightTbodyRef.current;
+    if (!lb || !rb) return;
+    const leftRows = Array.from(lb.rows) as HTMLTableRowElement[];
+    const rightRows = Array.from(rb.rows) as HTMLTableRowElement[];
+    const len = Math.min(leftRows.length, rightRows.length);
+    // 1) 높이 초기화
+    for (let i = 0; i < len; i++) {
+      leftRows[i].style.height = "";
+      rightRows[i].style.height = "";
+    }
+    // 2) 읽기 (reflow 최소화)
+    const heights: number[] = [];
+    for (let i = 0; i < len; i++) {
+      heights.push(Math.max(leftRows[i].offsetHeight, rightRows[i].offsetHeight));
+    }
+    // 3) 쓰기
+    for (let i = 0; i < len; i++) {
+      leftRows[i].style.height = `${heights[i]}px`;
+      rightRows[i].style.height = `${heights[i]}px`;
+    }
+  });
 
   useEffect(() => {
     if (!editing) return;
@@ -1446,7 +1474,7 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
       )}
 
       {/* ── 모바일 카드 뷰 (lg 미만) ──────────────────────────── */}
-      <div className="block lg:hidden">
+      <div className="block min-[1440px]:hidden">
         <OrdersMobileView
           filteredRows={filteredRows}
           orderCount={orderCount}
@@ -1456,8 +1484,8 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
         />
       </div>
 
-      {/* ── 데스크탑 테이블 뷰 (lg 이상) ─────────────────────── */}
-      <div className="hidden lg:block">
+      {/* ── 데스크탑 테이블 뷰 (1440px 이상) ─────────────────── */}
+      <div className="hidden min-[1440px]:block">
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         주문 {orderCount}건 · 표시 행 {lineCount}줄 · 테이블을 드래그하면 좌우로 스크롤됩니다.
       </p>
@@ -1562,244 +1590,273 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
           );
         })()}
 
-        {/* ── 수직 sticky 헤더 테이블 (overflow-x:auto 밖에 위치 → window 기준 sticky) ── */}
-        <div
-          ref={headerWrapRef}
-          className="sticky z-20 bg-white dark:bg-zinc-950"
-          style={{ top: 108, overflowX: "hidden" }}
-        >
-          <table
-            ref={headerTableRef}
-            className="min-w-full text-left text-sm"
-            style={{ tableLayout: "fixed", width: "100%", minWidth: 2152, borderCollapse: "separate", borderSpacing: 0 }}
-          >
-            <colgroup>
-              <col style={{ width: "32px" }} />
-              <col style={{ width: "90px" }} />
-              <col style={{ width: "90px" }} />
-              <col style={{ width: "320px" }} />
-              <col style={{ width: "180px" }} />
-              <col style={{ width: "112px" }} />
-              <col style={{ width: "72px" }} />
-              <col style={{ width: "52px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "72px" }} />
-              <col style={{ width: "72px" }} />
-              <col style={{ width: "140px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "48px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "72px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "120px" }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className={`${thClass} sticky left-0 z-30`}>{t.col_num}</th>
-                <th className={`${thClass} sticky left-[32px] z-30`}>{t.col_date}</th>
-                <th className={`${thClass} sticky left-[122px] z-30`}>{t.col_order_num}</th>
-                <th className={`${thClass} sticky left-[212px] z-30 text-left`}>{t.col_product_name}</th>
-                <th className={`${thClass} text-left`}>{t.col_option}</th>
-                <th className={thClass}>{t.col_progress}</th>
-                <th className={`${thClass} th-ru-xs`}>{t.col_set_type}</th>
-                <th className={`${thClass} th-ru-xs`}>{t.col_gift}</th>
-                <th className={thClass}>{t.col_photo}</th>
-                <th className={thClass}>{t.col_platform}</th>
-                <th className={thClass}>{t.col_route}</th>
-                <th className={thClass}>{t.col_customer}</th>
-                <th className={thClass}>{t.col_channel}</th>
-                <th className={thClass}>{t.col_category}</th>
-                <th className={thClass}>{t.col_quantity}</th>
-                <th className={thClass}>{t.col_price_rub}</th>
-                <th className={thClass}>{t.col_krw}</th>
-                <th className={thClass}>{t.col_prepay_rub}</th>
-                <th className={thClass}>{t.col_balance_rub}</th>
-                <th className={thClass}>{t.col_shipping_fee}</th>
-                <th className={thClass}>{t.col_weight}</th>
-                <th className={`${thClass} border-r-0`}>{t.col_tracking}</th>
-              </tr>
-            </thead>
-          </table>
+        {/* ── Frozen panes 헤더: 좌(4열 고정) + 우(18열 가로스크롤 동기화) ── */}
+        <div className="sticky z-20 flex bg-white dark:bg-zinc-950" style={{ top: 108 }}>
+          {/* 좌측 고정 헤더 4열 */}
+          <div className="flex-none overflow-hidden border-r-2 border-zinc-300 dark:border-zinc-600" style={{ width: 532 }}>
+            <table
+              className="text-left text-sm"
+              style={{ tableLayout: "fixed", width: 532, borderCollapse: "separate", borderSpacing: 0 }}
+            >
+              <colgroup>
+                <col style={{ width: "32px" }} />
+                <col style={{ width: "90px" }} />
+                <col style={{ width: "90px" }} />
+                <col style={{ width: "320px" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className={thClass}>{t.col_num}</th>
+                  <th className={thClass}>{t.col_date}</th>
+                  <th className={thClass}>{t.col_order_num}</th>
+                  <th className={`${thClass} text-left`}>{t.col_product_name}</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
+          {/* 우측 스크롤 헤더 18열 (tableRef 가로스크롤과 JS 동기화) */}
+          <div ref={headerWrapRef} className="flex-1 overflow-hidden">
+            <table
+              ref={headerTableRef}
+              className="text-left text-sm"
+              style={{ tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0 }}
+            >
+              <colgroup>
+                <col style={{ width: "180px" }} />
+                <col style={{ width: "112px" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "52px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "140px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "48px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "120px" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className={`${thClass} text-left`}>{t.col_option}</th>
+                  <th className={thClass}>{t.col_progress}</th>
+                  <th className={`${thClass} th-ru-xs`}>{t.col_set_type}</th>
+                  <th className={`${thClass} th-ru-xs`}>{t.col_gift}</th>
+                  <th className={thClass}>{t.col_photo}</th>
+                  <th className={thClass}>{t.col_platform}</th>
+                  <th className={thClass}>{t.col_route}</th>
+                  <th className={thClass}>{t.col_customer}</th>
+                  <th className={thClass}>{t.col_channel}</th>
+                  <th className={thClass}>{t.col_category}</th>
+                  <th className={thClass}>{t.col_quantity}</th>
+                  <th className={thClass}>{t.col_price_rub}</th>
+                  <th className={thClass}>{t.col_krw}</th>
+                  <th className={thClass}>{t.col_prepay_rub}</th>
+                  <th className={thClass}>{t.col_balance_rub}</th>
+                  <th className={thClass}>{t.col_shipping_fee}</th>
+                  <th className={thClass}>{t.col_weight}</th>
+                  <th className={`${thClass} border-r-0`}>{t.col_tracking}</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
         </div>
 
-        <div ref={tableRef} style={{ overflowX: "auto", overflowY: "clip" }}>
-          <table
-            className="min-w-full text-left text-sm"
-            style={{ tableLayout: "fixed", width: "100%", minWidth: 2152, borderCollapse: "separate", borderSpacing: 0 }}
-          >
-            <colgroup>
-              <col style={{ width: "32px" }} />
-              <col style={{ width: "90px" }} />
-              <col style={{ width: "90px" }} />
-              <col style={{ width: "320px" }} />
-              <col style={{ width: "180px" }} />
-              <col style={{ width: "112px" }} />
-              <col style={{ width: "72px" }} />
-              <col style={{ width: "52px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "72px" }} />
-              <col style={{ width: "72px" }} />
-              <col style={{ width: "140px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "48px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "88px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "72px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "120px" }} />
-            </colgroup>
-            <thead className="sr-only">
-              <tr>
-                <th className={`${thClass} sticky left-0 z-30`}>{t.col_num}</th>
-                <th className={`${thClass} sticky left-[32px] z-30`}>{t.col_date}</th>
-                <th className={`${thClass} sticky left-[122px] z-30`}>{t.col_order_num}</th>
-                <th className={`${thClass} sticky left-[212px] z-30 text-left`}>{t.col_product_name}</th>
-                <th className={`${thClass} text-left`}>{t.col_option}</th>
-                <th className={thClass}>{t.col_progress}</th>
-                <th className={`${thClass} th-ru-xs`}>{t.col_set_type}</th>
-                <th className={`${thClass} th-ru-xs`}>{t.col_gift}</th>
-                <th className={thClass}>{t.col_photo}</th>
-                <th className={thClass}>{t.col_platform}</th>
-                <th className={thClass}>{t.col_route}</th>
-                <th className={thClass}>{t.col_customer}</th>
-                <th className={thClass}>{t.col_channel}</th>
-                <th className={thClass}>{t.col_category}</th>
-                <th className={thClass}>{t.col_quantity}</th>
-                <th className={thClass}>{t.col_price_rub}</th>
-                <th className={thClass}>{t.col_krw}</th>
-                <th className={thClass}>{t.col_prepay_rub}</th>
-                <th className={thClass}>{t.col_balance_rub}</th>
-                <th className={thClass}>{t.col_shipping_fee}</th>
-                <th className={thClass}>{t.col_weight}</th>
-                <th className={`${thClass} border-r-0`}>{t.col_tracking}</th>
-              </tr>
-            </thead>
-          <tbody>
-            {filteredRows.length === 0 ? (
-              <tr>
-                <td colSpan={21} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">
-                  {t.state_no_results}
-                </td>
-              </tr>
-            ) : null}
-            {filteredRows.map((row, idx) => {
-              const { order, item } = row;
-              const on = order.order_num;
-              const id = item.id;
-              const rowKey = `${on}-${id}`;
-              const orderBg = getOrderBgColor(on);
-              const itemProgress = item.progress ?? order.progress;
-              const itemGift = item.gift ?? order.gift;
-              const itemPhotoSent = item.photo_sent ?? order.photo_sent;
+        {/* ── Frozen panes 바디: 좌(4열 고정) + 우(18열 가로스크롤) ── */}
+        <div className="flex">
+          {/* 좌측 고정 패널 - sticky 없음, overflow 없음 */}
+          <div className="flex-none overflow-hidden border-r-2 border-zinc-200 dark:border-zinc-700" style={{ width: 532 }}>
+            <table
+              className="text-left text-sm"
+              style={{ tableLayout: "fixed", width: 532, borderCollapse: "separate", borderSpacing: 0 }}
+            >
+              <colgroup>
+                <col style={{ width: "32px" }} />
+                <col style={{ width: "90px" }} />
+                <col style={{ width: "90px" }} />
+                <col style={{ width: "320px" }} />
+              </colgroup>
+              <thead className="sr-only">
+                <tr>
+                  <th>{t.col_num}</th>
+                  <th>{t.col_date}</th>
+                  <th>{t.col_order_num}</th>
+                  <th>{t.col_product_name}</th>
+                </tr>
+              </thead>
+              <tbody ref={leftTbodyRef}>
+                {filteredRows.length === 0 ? (
+                  <tr><td colSpan={4} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">{t.state_no_results}</td></tr>
+                ) : null}
+                {filteredRows.map((row, idx) => {
+                  const { order, item } = row;
+                  const on = order.order_num;
+                  const id = item.id;
+                  const rowKey = `${on}-${id}`;
+                  const orderBg = getOrderBgColor(on);
+                  const itemProgress = item.progress ?? order.progress;
+                  return (
+                    <tr key={rowKey} data-row-idx={idx}>
+                      {/* # 줄 번호 */}
+                      <td className={`${tdBase} border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}>
+                        {idx + 1}
+                      </td>
 
-              return (
-                <tr key={rowKey} data-row-idx={idx}>
-                  {/* # 줄 번호 */}
-                  <td
-                    className={`${tdBase} sticky z-10 border-r-gray-300 text-xs text-zinc-400 dark:text-zinc-500 ${whiteBg}`}
-                    style={{ left: 0, width: "32px", minWidth: "32px", willChange: "transform" }}
-                  >
-                    {idx + 1}
-                  </td>
+                      {/* 일자 */}
+                      <td className={`${tdBase} whitespace-nowrap border-r-gray-300 ${isEditingOrder(rowKey, "date") ? editingBg : whiteBg}`}>
+                        {isEditingOrder(rowKey, "date") ? (
+                          <input
+                            ref={inputRef}
+                            type="date"
+                            title={t.order_field_applies_all}
+                            className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                            value={draft}
+                            onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                            onBlur={(e) => {
+                              if (e.relatedTarget === barInputRef.current) return;
+                              const cur = editingRef.current;
+                              if (!cur || cur.kind !== "order" || cur.rowKey !== rowKey || cur.field !== "date") return;
+                              const d = draftRef.current; const b = editBaselineRef.current;
+                              editingRef.current = null;
+                              void saveOrderField(on, "date", d, b);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            title={t.order_field_applies_all}
+                            className={cellBtn}
+                            onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "date" }, order.date?.slice(0, 10) ?? "")}
+                          >
+                            {order.date?.slice(0, 10) ?? "—"}
+                          </button>
+                        )}
+                      </td>
 
-                  {/* 일자 — order 필드 */}
-                  <td
-                    className={`${tdBase} sticky z-10 whitespace-nowrap border-r-gray-300 ${isEditingOrder(rowKey, "date") ? editingBg : whiteBg}`}
-                    style={{ left: "32px", width: "90px", minWidth: "90px", willChange: "transform" }}
-                  >
-                    {isEditingOrder(rowKey, "date") ? (
-                      <input
-                        ref={inputRef}
-                        type="date"
-                        title={t.order_field_applies_all}
-                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
-                        value={draft}
-                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
-                        onBlur={(e) => {
-                          if (e.relatedTarget === barInputRef.current) return;
-                          const cur = editingRef.current;
-                          if (!cur || cur.kind !== "order" || cur.rowKey !== rowKey || cur.field !== "date") return;
-                          const d = draftRef.current; const b = editBaselineRef.current;
-                          editingRef.current = null;
-                          void saveOrderField(on, "date", d, b);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                          if (e.key === "Escape") cancelEdit();
-                        }}
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        title={t.order_field_applies_all}
-                        className={cellBtn}
-                        onClick={() => startEdit({ kind: "order", rowKey, orderNum: on, field: "date" }, order.date?.slice(0, 10) ?? "")}
+                      {/* 주문번호 */}
+                      <td className={`${tdBase} border-r-gray-300 font-semibold ${orderBg}`}>
+                        <Link href={`/orders/${encodeURIComponent(on)}`} className="text-gray-900 hover:underline dark:text-gray-100">
+                          {on}
+                        </Link>
+                      </td>
+
+                      {/* 상품명 */}
+                      <td
+                        className={`${tdBase} relative text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : isFillHighlight(idx, "product_name", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getProgressBgColor(itemProgress)}`}
+                        title={item.product_name}
                       >
-                        {order.date?.slice(0, 10) ?? "—"}
-                      </button>
-                    )}
-                  </td>
+                        {isEditingItem(id, "product_name") ? (
+                          <input
+                            ref={inputRef}
+                            className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
+                            value={draft}
+                            onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
+                            onBlur={(e) => {
+                              if (e.relatedTarget === barInputRef.current) return;
+                              const cur = editingRef.current;
+                              if (!cur || cur.kind !== "item" || cur.itemId !== id || cur.field !== "product_name") return;
+                              const d = draftRef.current; const b = editBaselineRef.current;
+                              editingRef.current = null;
+                              void saveItemField(id, on, "product_name", d, b, item);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className={cellBtnLeft}
+                            style={{ fontSize: "12px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}
+                            onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_name" }, item.product_name)}
+                          >
+                            {displayName(item.product_name, item.product_option)}
+                          </button>
+                        )}
+                        {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "product_name" && (
+                          <FillHandle rowIdx={idx} field="product_name" kind="item" rawValue={item.product_name} />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-                  {/* 주문번호 */}
-                  <td
-                    className={`${tdBase} sticky z-10 border-r-gray-300 font-semibold ${orderBg}`}
-                    style={{ left: "122px", width: "90px", minWidth: "90px", willChange: "transform" }}
-                  >
-                    <Link
-                      href={`/orders/${encodeURIComponent(on)}`}
-                      className="text-gray-900 hover:underline dark:text-gray-100"
-                    >
-                      {on}
-                    </Link>
-                  </td>
+          {/* 우측 스크롤 패널 18열 - sticky 없음, overflow-x:auto */}
+          <div ref={tableRef} className="flex-1 cursor-grab" style={{ overflowX: "auto", overflowY: "clip" }}>
+            <table
+              className="text-left text-sm"
+              style={{ tableLayout: "fixed", borderCollapse: "separate", borderSpacing: 0 }}
+            >
+              <colgroup>
+                <col style={{ width: "180px" }} />
+                <col style={{ width: "112px" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "52px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "140px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "48px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "88px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "80px" }} />
+                <col style={{ width: "120px" }} />
+              </colgroup>
+              <thead className="sr-only">
+                <tr>
+                  <th>{t.col_option}</th>
+                  <th>{t.col_progress}</th>
+                  <th>{t.col_set_type}</th>
+                  <th>{t.col_gift}</th>
+                  <th>{t.col_photo}</th>
+                  <th>{t.col_platform}</th>
+                  <th>{t.col_route}</th>
+                  <th>{t.col_customer}</th>
+                  <th>{t.col_channel}</th>
+                  <th>{t.col_category}</th>
+                  <th>{t.col_quantity}</th>
+                  <th>{t.col_price_rub}</th>
+                  <th>{t.col_krw}</th>
+                  <th>{t.col_prepay_rub}</th>
+                  <th>{t.col_balance_rub}</th>
+                  <th>{t.col_shipping_fee}</th>
+                  <th>{t.col_weight}</th>
+                  <th>{t.col_tracking}</th>
+                </tr>
+              </thead>
+              <tbody ref={rightTbodyRef}>
+                {filteredRows.length === 0 ? (
+                  <tr><td colSpan={18} className="py-10 text-center text-sm text-zinc-400 dark:text-zinc-500">{t.state_no_results}</td></tr>
+                ) : null}
+                {filteredRows.map((row, idx) => {
+                  const { order, item } = row;
+                  const on = order.order_num;
+                  const id = item.id;
+                  const rowKey = `${on}-${id}`;
+                  const itemProgress = item.progress ?? order.progress;
+                  const itemGift = item.gift ?? order.gift;
+                  const itemPhotoSent = item.photo_sent ?? order.photo_sent;
 
-                  {/* 상품명 */}
-                  <td
-                    className={`${tdBase} relative sticky z-10 text-left border-r-gray-300 ${isEditingItem(id, "product_name") ? editingBg : isFillHighlight(idx, "product_name", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getProgressBgColor(itemProgress)}`}
-                    style={{ left: "212px", width: "320px", minWidth: "320px", willChange: "transform" }}
-                    title={item.product_name}
-                  >
-                    {isEditingItem(id, "product_name") ? (
-                      <input
-                        ref={inputRef}
-                        className="w-full rounded border border-sky-400 bg-white px-1 py-0.5 text-xs dark:border-sky-600 dark:bg-zinc-950"
-                        value={draft}
-                        onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
-                        onBlur={(e) => {
-                          if (e.relatedTarget === barInputRef.current) return;
-                          const cur = editingRef.current;
-                          if (!cur || cur.kind !== "item" || cur.itemId !== id || cur.field !== "product_name") return;
-                          const d = draftRef.current; const b = editBaselineRef.current;
-                          editingRef.current = null;
-                          void saveItemField(id, on, "product_name", d, b, item);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                          if (e.key === "Escape") cancelEdit();
-                        }}
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        className={cellBtnLeft}
-                        style={{ fontSize: "12px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}
-                        onClick={() => startEdit({ kind: "item", rowKey, itemId: id, orderNum: on, field: "product_name" }, item.product_name)}
-                      >
-                        {displayName(item.product_name, item.product_option)}
-                      </button>
-                    )}
-                    {focusedCell?.kind === "item" && (focusedCell as Extract<EditTarget, { kind: "item" }>).itemId === id && focusedCell.field === "product_name" && (
-                      <FillHandle rowIdx={idx} field="product_name" kind="item" rawValue={item.product_name} />
-                    )}
-                  </td>
-
+                  return (
+                    <tr key={rowKey} data-row-idx={idx}>
                   {/* 옵션 */}
                   <td
                     className={`${tdBase} relative text-left ${isEditingItem(id, "product_option") ? editingBg : isFillHighlight(idx, "product_option", "item") ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : getProgressBgColor(itemProgress)}`}
@@ -2318,14 +2375,15 @@ export function OrdersLineItemsTable({ initialOrders }: { initialOrders: OrderWi
                   <td className={`${tdBase} border-r-0 text-left`}>
                     {row.order.tracking_number ?? "—"}
                   </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      </div>
-      </div>{/* end hidden lg:block desktop wrapper */}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>{/* end right panel */}
+        </div>{/* end frozen panes flex body */}
+      </div>{/* end wrapperRef */}
+      </div>{/* end hidden min-[1440px]:block desktop wrapper */}
     </>
   );
 }
