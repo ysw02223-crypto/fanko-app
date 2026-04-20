@@ -23,10 +23,18 @@ import { flattenOrders } from "@/lib/orders-line-items-flatten";
 import { toGridRow, type OrderGridRow } from "@/lib/orders-ag-grid-types";
 import { DeliveryImportButton } from "@/components/delivery-import-button";
 import { ORDER_PROGRESS, PLATFORMS, ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES, PHOTO_STATUS } from "@/lib/schema";
+import { insertDraftOrderAction, type InsertDraftOrderResult } from "@/lib/actions/orders";
 import type { OrderWithNestedItems } from "@/lib/orders-line-items-flatten";
 
 // ── AG Grid 모듈 등록 (앱 전체에서 한 번만) ─────────────────────────────
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+// ── 주문번호 prefix → 플랫폼 매핑 ─────────────────────────────────────────
+const PREFIX_TO_PLATFORM: Readonly<Record<string, string>> = {
+  "01": "avito",
+  "02": "telegram",
+  "03": "vk",
+};
 
 // ── 테마 설정 ─────────────────────────────────────────────────────────────
 const fankoTheme = themeQuartz.withParams({
@@ -359,6 +367,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const [toastType, setToastType]     = useState<"error" | "success">("error");
   const [isMobile, setIsMobile]         = useState(false);
   const [focusedCell, setFocusedCell]   = useState<FocusedCell | null>(null);
+  const [draftErrors, setDraftErrors]   = useState<ReadonlySet<string>>(new Set<string>());
   const gridRef                         = useRef<AgGridReact<OrderGridRow>>(null);
 
   const colDefs = useMemo(() => buildColDefs(), []);
@@ -401,22 +410,32 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     return () => clearTimeout(t);
   }, [toast]);
 
-  // ── initialOrders 변경 시 rowData 동기화 ─────────────────────────────────
+  // ── initialOrders 변경 시 rowData 동기화 (draft 행 보존) ─────────────────
   useEffect(() => {
-    setAllRows(
-      flattenOrders(initialOrders)
-        .filter((r) => r.item !== null)
-        .map(toGridRow),
-    );
+    const real = flattenOrders(initialOrders)
+      .filter((r) => r.item !== null)
+      .map(toGridRow);
+    setAllRows((prev) => {
+      const drafts = prev.filter((r) => r.item_id === null);
+      return [...real, ...drafts];
+    });
   }, [initialOrders]);
 
-  // ── 필터링된 rowData ─────────────────────────────────────────────────────
+  // ── 필터링된 rowData (draft 행 항상 최하단) ───────────────────────────────
   const rowData = useMemo<OrderGridRow[]>(() => {
     const q = searchQuery.trim().toLowerCase();
     const hasFilter = q !== "" || Object.values(filters).some(Boolean);
 
+    // draft 행(item_id===null)과 실제 행 분리
+    const drafts: OrderGridRow[] = [];
+    const real: OrderGridRow[]   = [];
+    for (const row of allRows) {
+      if (row.item_id === null) drafts.push(row);
+      else real.push(row);
+    }
+
     // 진행중 주문 먼저 (TOP_GROUP), 그 다음 날짜·주문번호 오름차순
-    const sorted = [...allRows].sort((a, b) => {
+    const sorted = [...real].sort((a, b) => {
       const aP = a.item_progress ?? "";
       const bP = b.item_progress ?? "";
       const aTop = TOP_GROUP.has(aP);
@@ -429,7 +448,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       return a.order_num.localeCompare(b.order_num);
     });
 
-    return sorted.filter((row) => {
+    const filtered = sorted.filter((row) => {
       if (!hasFilter) {
         const p = row.item_progress ?? "";
         if (p === "DONE" || p === "CANCEL") return false;
@@ -455,6 +474,9 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       }
       return true;
     });
+
+    // draft 행은 항상 맨 아래 (필터/정렬 무관)
+    return [...filtered, ...drafts];
   }, [allRows, searchQuery, filters]);
 
   // ── Supabase 클라이언트 (싱글턴) ────────────────────────────────────────
@@ -555,12 +577,152 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     [supabase],
   );
 
-  // ── AG Grid onCellValueChanged 래퍼 (데스크탑) ──────────────────────────
+  // ── 데이터 새로고침 (배송 import / draft 저장 후 호출, draft 행 보존) ──────
+  const fetchOrders = useCallback(async () => {
+    const { data } = await supabase
+      .from("orders")
+      .select(`*, order_items (id, product_type, product_name, product_option, product_set_type, quantity, price_rub, prepayment_rub, extra_payment_rub, krw, progress, gift, photo_sent)`)
+      .order("date", { ascending: false })
+      .order("order_num", { ascending: false });
+    if (data) {
+      const real = flattenOrders(data as OrderWithNestedItems[])
+        .filter((r) => r.item !== null)
+        .map(toGridRow);
+      setAllRows((prev) => {
+        const drafts = prev.filter((r) => r.item_id === null);
+        return [...real, ...drafts];
+      });
+    }
+  }, [supabase]);
+
+  // ── draft 행 추가 ────────────────────────────────────────────────────────
+  const addDraftRow = useCallback(() => {
+    const draft: OrderGridRow = {
+      rowKey:           `__draft_${Date.now()}`,
+      groupColorIndex:  0,
+      order_num:        "",
+      date:             new Date().toISOString().split("T")[0],
+      platform:         "avito",
+      order_type:       "KOREA",
+      customer_name:    null,
+      order_gift:       "no",
+      order_photo_sent: "Not sent",
+      purchase_channel: null,
+      item_id:          null,
+      product_type:     null,
+      product_name:     "",
+      product_option:   null,
+      product_set_type: "Single",
+      quantity:         1,
+      price_rub:        0,
+      prepayment_rub:   0,
+      extra_payment_rub: 0,
+      krw:              null,
+      item_progress:    "PAY",
+      item_gift:        "no",
+      item_photo_sent:  "Not sent",
+      shipping_fee:     null,
+      applied_weight:   null,
+      tracking_number:  null,
+    };
+    setAllRows((prev) => [...prev, draft]);
+    setTimeout(() => {
+      const api = gridRef.current?.api;
+      if (!api) return;
+      api.ensureIndexVisible(api.getDisplayedRowCount() - 1, "bottom");
+    }, 50);
+  }, []);
+
+  // ── draft 행 셀 변경 처리 (INSERT 경로) ─────────────────────────────────
+  const handleDraftCellChange = useCallback(
+    async (
+      field: keyof OrderGridRow,
+      row: OrderGridRow,
+      newValue: string | number | null,
+    ) => {
+      const updated: OrderGridRow = { ...row, [field]: newValue };
+
+      if (field === "order_num") {
+        const prefix  = String(newValue ?? "").substring(0, 2);
+        const derived = PREFIX_TO_PLATFORM[prefix];
+        if (derived) updated.platform = derived;
+      }
+      if (field === "product_name") {
+        const matches = String(newValue ?? "").match(/\(([^)]+)\)/g);
+        if (matches) {
+          const last = matches[matches.length - 1];
+          updated.product_option = last.slice(1, -1);
+        }
+      }
+
+      setAllRows((prev) =>
+        prev.map((r) => (r.rowKey === row.rowKey ? updated : r)),
+      );
+
+      const ready =
+        updated.order_num.trim() !== "" &&
+        updated.date.trim() !== "" &&
+        updated.product_name.trim() !== "";
+
+      if (!ready) {
+        const touched = updated.order_num !== "" || updated.product_name !== "";
+        if (touched) {
+          setDraftErrors((prev) => new Set<string>([...prev, row.rowKey]));
+        }
+        return;
+      }
+
+      const result: InsertDraftOrderResult = await insertDraftOrderAction({
+        order_num:     updated.order_num.trim(),
+        platform:      updated.platform,
+        order_type:    updated.order_type,
+        date:          updated.date.trim(),
+        customer_name: updated.customer_name ?? "",
+        gift:          updated.order_gift,
+        lines: [{
+          product_type:     updated.product_type ?? "",
+          product_name:     updated.product_name.trim(),
+          product_option:   updated.product_option ?? "",
+          product_set_type: updated.product_set_type,
+          quantity:         updated.quantity || 1,
+          price_rub:        updated.price_rub || 0,
+          prepayment_rub:   updated.prepayment_rub || 0,
+        }],
+      });
+
+      if ("error" in result) {
+        setDraftErrors((prev) => new Set<string>([...prev, row.rowKey]));
+        setToastType("error");
+        setToast(result.error);
+        return;
+      }
+
+      setDraftErrors((prev) => {
+        const s = new Set<string>(prev);
+        s.delete(row.rowKey);
+        return s;
+      });
+      setToastType("success");
+      setToast("주문을 저장했습니다.");
+      await fetchOrders();
+    },
+    [fetchOrders],
+  );
+
+  // ── AG Grid onCellValueChanged 래퍼 ────────────────────────────────────
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<OrderGridRow>) => {
       const fieldRaw = event.colDef.field;
       if (!fieldRaw) return;
       const field = fieldRaw as keyof OrderGridRow;
+
+      // draft 행(item_id===null): INSERT 경로
+      if (event.data.item_id === null) {
+        void handleDraftCellChange(field, event.data, event.newValue as string | number | null);
+        return;
+      }
+
+      // 실제 행: 기존 UPDATE 경로
       void saveFieldChange(
         field,
         event.data,
@@ -569,26 +731,30 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
         () => event.node.setDataValue(field as string, event.oldValue),
       );
     },
-    [saveFieldChange],
+    [saveFieldChange, handleDraftCellChange],
   );
 
-  // ── FormulaBar 저장 래퍼 ─────────────────────────────────────────────────
+  // ── FormulaBar 저장 래퍼 (draft / 실제 행 분기) ─────────────────────────
   const handleFormulaSave = useCallback(
     (
       field: keyof OrderGridRow,
       rowData: OrderGridRow,
       newValue: string | number | null,
     ) => {
-      void saveFieldChange(
-        field,
-        rowData,
-        rowData[field] as string | number | null,
-        newValue,
-        () => {},
-      );
+      if (rowData.item_id === null) {
+        void handleDraftCellChange(field, rowData, newValue);
+      } else {
+        void saveFieldChange(
+          field,
+          rowData,
+          rowData[field] as string | number | null,
+          newValue,
+          () => {},
+        );
+      }
       setFocusedCell(null);
     },
-    [saveFieldChange],
+    [saveFieldChange, handleDraftCellChange],
   );
 
   // ── 셀 포커스 → FormulaBar 업데이트 ─────────────────────────────────────
@@ -624,27 +790,20 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     [],
   );
 
-  // ── 데이터 새로고침 (배송 import 후 호출) ─────────────────────────────────
-  const fetchOrders = useCallback(async () => {
-    const { data } = await supabase
-      .from("orders")
-      .select(`*, order_items (id, product_type, product_name, product_option, product_set_type, quantity, price_rub, prepayment_rub, extra_payment_rub, krw, progress, gift, photo_sent)`)
-      .order("date", { ascending: false })
-      .order("order_num", { ascending: false });
-    if (data) {
-      setAllRows(
-        flattenOrders(data as OrderWithNestedItems[])
-          .filter((r) => r.item !== null)
-          .map(toGridRow),
-      );
-    }
-  }, [supabase]);
-
-  // ── row 스타일 (groupColorIndex 기반 배경색) ──────────────────────────────
-  const getRowStyle = useCallback((params: RowClassParams<OrderGridRow>): RowStyle | undefined => {
-    const idx = (params.data?.groupColorIndex ?? 0) % ROW_BG_COLORS.length;
-    return { backgroundColor: ROW_BG_COLORS[idx] + "33" }; // 20% opacity
-  }, []);
+  // ── row 스타일 (draft 행 색상 + 기존 groupColorIndex) ────────────────────
+  const getRowStyle = useCallback(
+    (params: RowClassParams<OrderGridRow>): RowStyle | undefined => {
+      if (params.data?.item_id === null) {
+        if (draftErrors.has(params.data.rowKey)) {
+          return { backgroundColor: "#fee2e2", borderLeft: "3px solid #ef4444" };
+        }
+        return { backgroundColor: "#f0fdf4" }; // 연두색: 입력 대기
+      }
+      const idx = (params.data?.groupColorIndex ?? 0) % ROW_BG_COLORS.length;
+      return { backgroundColor: ROW_BG_COLORS[idx] + "33" };
+    },
+    [draftErrors],
+  );
 
   // ── row ID ────────────────────────────────────────────────────────────────
   const getRowId = useCallback(
@@ -652,21 +811,22 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     [],
   );
 
-  // ── 통계 카드 데이터 (allRows 기준 – 필터와 무관한 전체 현황) ─────────────
+  // ── 통계 카드 데이터 (draft 행 제외, 실제 DB 행만) ───────────────────────
   const stats = useMemo(() => {
+    const realRows = allRows.filter((r) => r.item_id !== null);
     const activeOrderNums = new Set(
-      allRows.filter((r) => TOP_GROUP.has(r.item_progress ?? "")).map((r) => r.order_num),
+      realRows.filter((r) => TOP_GROUP.has(r.item_progress ?? "")).map((r) => r.order_num),
     );
     return {
       activeOrders: activeOrderNums.size,
-      totalLines:   allRows.length,
-      inDelivery:   allRows.filter((r) => r.item_progress === "IN DELIVERY").length,
-      withBalance:  allRows.filter((r) => r.extra_payment_rub > 0).length,
+      totalLines:   realRows.length,
+      inDelivery:   realRows.filter((r) => r.item_progress === "IN DELIVERY").length,
+      withBalance:  realRows.filter((r) => r.extra_payment_rub > 0).length,
     };
   }, [allRows]);
 
   const hasActiveFilter = Object.values(filters).some(Boolean);
-  const orderCount = new Set(rowData.map((r) => r.order_num)).size;
+  const orderCount = new Set(rowData.filter((r) => r.item_id !== null).map((r) => r.order_num)).size;
 
   return (
     <>
@@ -885,6 +1045,18 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             suppressMovableColumns={false}
             rowBuffer={20}
           />
+        </div>
+
+        {/* ── + 행 추가 버튼 ────────────────────────────────────────────── */}
+        <div className="shrink-0 border-t border-zinc-200 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+          <button
+            type="button"
+            onClick={addDraftRow}
+            className="flex items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 px-3 py-1.5 text-sm text-zinc-500 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-600 dark:border-zinc-600 dark:text-zinc-400 dark:hover:border-emerald-500 dark:hover:bg-emerald-950/20 dark:hover:text-emerald-400"
+          >
+            <span className="text-base font-bold leading-none">+</span>
+            행 추가
+          </button>
         </div>
       </div>
     </>

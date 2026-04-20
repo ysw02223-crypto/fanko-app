@@ -298,6 +298,110 @@ export async function updateOrder(
   return { ok: "저장했습니다." };
 }
 
+// ── 인라인 신규주문 저장 (redirect 없음, itemId 반환) ──────────────────────
+export type InsertDraftOrderResult = { itemId: string } | { error: string };
+
+export async function insertDraftOrderAction(
+  payload: CreateOrderWithItemsPayload,
+): Promise<InsertDraftOrderResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  const order_num = String(payload.order_num ?? "").trim();
+  if (!order_num) return { error: "주문번호를 입력하세요." };
+
+  const platform = String(payload.platform ?? "");
+  const order_type = String(payload.order_type ?? "KOREA");
+  const date = String(payload.date ?? "").trim();
+  if (!isPlatform(platform))   return { error: "플랫폼이 올바르지 않습니다. (주문번호 앞 2자리 확인)" };
+  if (!isOrderRoute(order_type)) return { error: "주문 경로가 올바르지 않습니다." };
+  if (!date) return { error: "주문일을 입력하세요." };
+
+  const L = (payload.lines ?? [])[0];
+  if (!L) return { error: "상품명을 입력하세요." };
+  const product_name = String(L.product_name ?? "").trim();
+  if (!product_name) return { error: "상품명을 입력하세요." };
+
+  const product_option  = String(L.product_option ?? "").trim();
+  const pst             = String(L.product_set_type ?? "Single");
+  const product_set_type: SetType = isSetType(pst) ? pst : "Single";
+  const quantity        = Math.max(1, Math.floor(Number(L.quantity) || 1));
+  const price_rub       = Number(L.price_rub) || 0;
+  const prepayment_rub  = Number(L.prepayment_rub) || 0;
+
+  // ① orders INSERT
+  const { error: orderErr } = await supabase.from("orders").insert({
+    order_num,
+    platform,
+    order_type,
+    date,
+    progress:      "PAY" as OrderProgress,
+    customer_name: String(payload.customer_name ?? "").trim() || null,
+    gift:          payload.gift === "ask" ? "ask" : "no",
+    photo_sent:    "Not sent" as PhotoStatus,
+    purchase_channel: null,
+  });
+  if (orderErr) return { error: orderErr.message };
+
+  // ② order_items INSERT
+  const { data: itemData, error: itemErr } = await supabase
+    .from("order_items")
+    .insert({
+      order_num,
+      product_type:     null,
+      product_name,
+      product_option:   product_option || null,
+      product_set_type,
+      quantity,
+      price_rub,
+      prepayment_rub,
+      extra_payment_rub: price_rub - prepayment_rub,
+      krw: null,
+    })
+    .select("id")
+    .single();
+
+  if (itemErr) {
+    await supabase.from("orders").delete().eq("order_num", order_num);
+    return { error: itemErr.message };
+  }
+
+  const itemId = itemData.id as string;
+
+  // ③ fin_income_records 동기화
+  const saleKrw = Math.round(price_rub * 16.5);
+  await supabase.from("fin_income_records").upsert(
+    {
+      date,
+      category:          "러시아판매",
+      sub_category:      null,
+      product_name,
+      product_type:      null,
+      sale_currency:     "RUB",
+      sale_amount:       price_rub,
+      sale_rate:         16.5,
+      sale_krw:          saleKrw,
+      purchase_currency: "KRW",
+      purchase_amount:   0,
+      purchase_rate:     null,
+      purchase_krw:      0,
+      profit_krw:        saleKrw,
+      source:            "order",
+      order_item_id:     itemId,
+      note:              null,
+      updated_at:        new Date().toISOString(),
+    },
+    { onConflict: "order_item_id" },
+  );
+
+  revalidatePath("/orders");
+  revalidatePath("/finance/income");
+  return { itemId };
+}
+
 export async function deleteOrder(orderNum: string): Promise<void> {
   const supabase = await createClient();
   const {
