@@ -55,7 +55,8 @@ export async function getOrdersForShipping(): Promise<OrderForShipping[]> {
       .from("orders")
       .select("order_num, date, progress")
       .neq("progress", "DONE")
-      .order("date", { ascending: false }),
+      .order("date", { ascending: true })
+      .order("order_num", { ascending: true }),
     supabase
       .from("order_items")
       .select("order_num, product_name"),

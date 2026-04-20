@@ -104,6 +104,7 @@ const fankoTheme = themeQuartz.withParams({
   rowHoverColor: "rgba(0,0,0,0.03)",
   selectedRowBackgroundColor: "rgba(5, 150, 105, 0.08)",
   cellHorizontalPaddingScale: 0.6,
+  columnBorder: true,
 });
 
 // ── 헬퍼 ──────────────────────────────────────────────────────────────────

@@ -37,3 +37,11 @@ body {
 [data-locale="ru"] th.th-ru-xs {
   font-size: 0.5rem !important;
 }
+
+/* AG Grid — 핀 컬럼(왼쪽 고정) 오른쪽 테두리를 두껍게 */
+.ag-cell.ag-cell-last-left-pinned {
+  border-right: 2px solid #a1a1aa !important;
+}
+.ag-header-cell.ag-header-cell-last-left-pinned {
+  border-right: 2px solid #a1a1aa !important;
+}

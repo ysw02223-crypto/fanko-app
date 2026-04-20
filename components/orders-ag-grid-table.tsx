@@ -48,6 +48,7 @@ const fankoTheme = themeQuartz.withParams({
   rowHoverColor: "rgba(0,0,0,0.03)",
   selectedRowBackgroundColor: "rgba(5, 150, 105, 0.08)",
   cellHorizontalPaddingScale: 0.6,
+  columnBorder: true,
 });
 
 // ── 진행상태 색상 맵 (기존 getProgressStyle 이식) ─────────────────────────
@@ -583,8 +584,8 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     const { data } = await supabase
       .from("orders")
       .select(`*, order_items (id, product_type, product_name, product_option, product_set_type, quantity, price_rub, prepayment_rub, extra_payment_rub, krw, progress, gift, photo_sent)`)
-      .order("date", { ascending: false })
-      .order("order_num", { ascending: false });
+      .order("date", { ascending: true })
+      .order("order_num", { ascending: true });
     if (data) {
       const real = flattenOrders(data as OrderWithNestedItems[])
         .filter((r) => r.item !== null)

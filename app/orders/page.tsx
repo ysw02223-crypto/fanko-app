@@ -27,8 +27,8 @@ export default async function OrdersPage() {
   const { data: rows, error } = await supabase
     .from("orders")
     .select(ORDER_LIST_SELECT)
-    .order("date", { ascending: false })
-    .order("order_num", { ascending: false });
+    .order("date", { ascending: true })
+    .order("order_num", { ascending: true });
 
   if (error) {
     return (
