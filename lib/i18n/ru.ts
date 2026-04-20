@@ -154,4 +154,19 @@ export const ru = {
   lang_ko: "한국어",
   lang_en: "English",
   lang_ru: "Русский",
+
+  // ── Статистика таблицы заказов ───────────────────────
+  stat_active_orders: "Активных",
+  stat_total_lines: "Строк всего",
+  stat_in_delivery: "В доставке",
+  stat_with_balance: "С остатком",
+
+  // ── Прочее UI таблицы заказов ────────────────────────
+  filter_reset: "Сбросить",
+  toast_saved: "Сохранено.",
+  toast_order_saved: "Заказ сохранён.",
+  toast_save_fail: "Ошибка сохранения",
+  orders_search_placeholder: "Поиск: №заказа·товар·клиент·опция…",
+  btn_add_row: "Добавить строку",
+  orders_counter: "{orders} заказов · {lines} строк",
 } as const;

@@ -154,4 +154,19 @@ export const en = {
   lang_ko: "한국어",
   lang_en: "English",
   lang_ru: "Русский",
+
+  // ── Order List Stat Cards ────────────────────────────
+  stat_active_orders: "Active Orders",
+  stat_total_lines: "Total Lines",
+  stat_in_delivery: "In Delivery",
+  stat_with_balance: "Has Balance",
+
+  // ── Order List Misc UI ───────────────────────────────
+  filter_reset: "Reset",
+  toast_saved: "Saved.",
+  toast_order_saved: "Order saved.",
+  toast_save_fail: "Save failed",
+  orders_search_placeholder: "Search order#·product·customer·option…",
+  btn_add_row: "Add Row",
+  orders_counter: "{orders} orders · {lines} lines shown",
 } as const;

@@ -154,4 +154,19 @@ export const ko = {
   lang_ko: "한국어",
   lang_en: "English",
   lang_ru: "Русский",
+
+  // ── 주문목록 통계 카드 ───────────────────────────────
+  stat_active_orders: "진행 주문",
+  stat_total_lines: "전체 라인",
+  stat_in_delivery: "배송 중",
+  stat_with_balance: "잔금 있음",
+
+  // ── 주문목록 기타 UI ─────────────────────────────────
+  filter_reset: "초기화",
+  toast_saved: "저장했습니다.",
+  toast_order_saved: "주문을 저장했습니다.",
+  toast_save_fail: "저장 실패",
+  orders_search_placeholder: "주문번호·상품명·고객·옵션 검색…",
+  btn_add_row: "행 추가",
+  orders_counter: "{orders}건 주문 · {lines}줄 표시",
 } as const;

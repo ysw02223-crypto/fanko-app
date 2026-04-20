@@ -25,6 +25,8 @@ import { DeliveryImportButton } from "@/components/delivery-import-button";
 import { ORDER_PROGRESS, PLATFORMS, ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES, PHOTO_STATUS } from "@/lib/schema";
 import { insertDraftOrderAction, type InsertDraftOrderResult } from "@/lib/actions/orders";
 import type { OrderWithNestedItems } from "@/lib/orders-line-items-flatten";
+import { useT } from "@/lib/i18n";
+import type { TranslationDict } from "@/lib/i18n";
 
 // ── AG Grid 모듈 등록 (앱 전체에서 한 번만) ─────────────────────────────
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -125,7 +127,7 @@ function kgFormatter({ value }: ValueFormatterParams<OrderGridRow, number | null
 }
 
 // ── 컬럼 정의 (22열) ──────────────────────────────────────────────────────
-function buildColDefs(): ColDef<OrderGridRow>[] {
+function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
   const selectOpts = (values: readonly string[]) => ({
     cellEditor: "agSelectCellEditor",
     cellEditorParams: { values: [...values] },
@@ -135,7 +137,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 고정 컬럼 (pinned left) ──────────────────────────────────────────
     {
       field: "order_num",
-      headerName: "주문번호",
+      headerName: t.col_order_num,
       width: 120,
       pinned: "left" as const,
       editable: (params) => params.data?.item_id === null,
@@ -143,7 +145,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     },
     {
       field: "date",
-      headerName: "일자",
+      headerName: t.col_date,
       width: 110,
       pinned: "left" as const,
       editable: true,
@@ -152,14 +154,14 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 상품 정보 ─────────────────────────────────────────────────────────
     {
       field: "product_name",
-      headerName: "상품명",
+      headerName: t.col_product_name,
       width: 200,
       editable: true,
       cellEditor: "agTextCellEditor",
     },
     {
       field: "product_option",
-      headerName: "옵션",
+      headerName: t.col_option,
       width: 150,
       editable: true,
       cellEditor: "agTextCellEditor",
@@ -169,7 +171,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 진행 ────────────────────────────────────────────────────────────
     {
       field: "item_progress",
-      headerName: "진행",
+      headerName: t.col_progress,
       width: 135,
       editable: true,
       cellRenderer: ProgressCellRenderer,
@@ -178,7 +180,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 단품/세트 ─────────────────────────────────────────────────────────
     {
       field: "product_set_type",
-      headerName: "단품/세트",
+      headerName: t.col_set_type,
       width: 90,
       editable: true,
       ...selectOpts(SET_TYPES),
@@ -188,7 +190,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 선물 ─────────────────────────────────────────────────────────────
     {
       field: "item_gift",
-      headerName: "선물",
+      headerName: t.col_gift,
       width: 75,
       editable: true,
       ...selectOpts(["no", "ask"] as const),
@@ -198,7 +200,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 사진 ─────────────────────────────────────────────────────────────
     {
       field: "item_photo_sent",
-      headerName: "사진",
+      headerName: t.col_photo,
       width: 95,
       editable: true,
       ...selectOpts(PHOTO_STATUS),
@@ -206,7 +208,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 플랫폼 ───────────────────────────────────────────────────────────
     {
       field: "platform",
-      headerName: "플랫폼",
+      headerName: t.col_platform,
       width: 90,
       editable: true,
       ...selectOpts(PLATFORMS),
@@ -214,7 +216,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 경로 ─────────────────────────────────────────────────────────────
     {
       field: "order_type",
-      headerName: "경로",
+      headerName: t.col_route,
       width: 85,
       editable: true,
       ...selectOpts(ORDER_ROUTES),
@@ -222,7 +224,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 고객명 ───────────────────────────────────────────────────────────
     {
       field: "customer_name",
-      headerName: "고객명",
+      headerName: t.col_customer,
       width: 130,
       editable: true,
       cellEditor: "agTextCellEditor",
@@ -232,7 +234,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 거래처 ───────────────────────────────────────────────────────────
     {
       field: "purchase_channel",
-      headerName: "거래처",
+      headerName: t.col_channel,
       width: 100,
       editable: true,
       cellEditor: "agTextCellEditor",
@@ -242,7 +244,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 카테고리 ─────────────────────────────────────────────────────────
     {
       field: "product_type",
-      headerName: "카테고리",
+      headerName: t.col_category,
       width: 105,
       editable: true,
       ...selectOpts(["", ...PRODUCT_CATEGORIES] as const),
@@ -252,7 +254,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 수량 ─────────────────────────────────────────────────────────────
     {
       field: "quantity",
-      headerName: "수량",
+      headerName: t.col_quantity,
       width: 65,
       editable: true,
       cellEditor: "agNumberCellEditor",
@@ -261,7 +263,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 판매가₽ ───────────────────────────────────────────────────────────
     {
       field: "price_rub",
-      headerName: "판매가₽",
+      headerName: t.col_price_rub,
       width: 105,
       editable: true,
       cellEditor: "agNumberCellEditor",
@@ -271,7 +273,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 원화매입₩ ─────────────────────────────────────────────────────────
     {
       field: "krw",
-      headerName: "원화매입₩",
+      headerName: t.col_krw,
       width: 115,
       editable: true,
       cellEditor: "agNumberCellEditor",
@@ -281,7 +283,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 선결제₽ ───────────────────────────────────────────────────────────
     {
       field: "prepayment_rub",
-      headerName: "선결제₽",
+      headerName: t.col_prepay_rub,
       width: 105,
       editable: true,
       cellEditor: "agNumberCellEditor",
@@ -291,7 +293,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 잔금₽ (computed, 읽기 전용) ───────────────────────────────────────
     {
       field: "extra_payment_rub",
-      headerName: "잔금₽",
+      headerName: t.col_balance_rub,
       width: 105,
       editable: false,
       valueFormatter: rubFormatter,
@@ -301,7 +303,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 배송비₩ (읽기 전용) ───────────────────────────────────────────────
     {
       field: "shipping_fee",
-      headerName: "배송비₩",
+      headerName: t.col_shipping_fee,
       width: 95,
       editable: false,
       valueFormatter: krwFormatter,
@@ -309,7 +311,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 적용무게 (읽기 전용) ──────────────────────────────────────────────
     {
       field: "applied_weight",
-      headerName: "적용무게",
+      headerName: t.col_weight,
       width: 90,
       editable: false,
       valueFormatter: kgFormatter,
@@ -317,7 +319,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
     // ── 운송장 (읽기 전용) ────────────────────────────────────────────────
     {
       field: "tracking_number",
-      headerName: "운송장",
+      headerName: t.col_tracking,
       width: 130,
       editable: false,
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
@@ -371,8 +373,9 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const [draftErrors, setDraftErrors]   = useState<ReadonlySet<string>>(new Set<string>());
   const gridRef                         = useRef<AgGridReact<OrderGridRow>>(null);
   const savingDrafts                    = useRef<Set<string>>(new Set());
+  const t                               = useT();
 
-  const colDefs = useMemo(() => buildColDefs(), []);
+  const colDefs = useMemo(() => buildColDefs(t), [t]);
 
   const defaultColDef = useMemo<ColDef<OrderGridRow>>(
     () => ({ resizable: true, sortable: false, minWidth: 60 }),
@@ -569,14 +572,14 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
         ]);
 
         setToastType("success");
-        setToast("저장했습니다.");
+        setToast(t.toast_saved);
       } catch (err) {
         revertFn();
         setToastType("error");
-        setToast(err instanceof Error ? err.message : "저장 실패");
+        setToast(err instanceof Error ? err.message : t.toast_save_fail);
       }
     },
-    [supabase],
+    [supabase, t],
   );
 
   // ── 데이터 새로고침 (배송 import / draft 저장 후 호출, draft 행 보존) ──────
@@ -710,12 +713,12 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       setAllRows((prev) => prev.filter((r) => r.rowKey !== row.rowKey));
       setFocusedCell(null);
       setToastType("success");
-      setToast("주문을 저장했습니다.");
+      setToast(t.toast_order_saved);
       await fetchOrders();
       // fetchOrders 완료 후 잠금 해제 (그 전까지 중복 INSERT 차단)
       savingDrafts.current.delete(row.rowKey);
     },
-    [fetchOrders],
+    [fetchOrders, t],
   );
 
   // ── AG Grid onCellValueChanged 래퍼 ────────────────────────────────────
@@ -862,23 +865,23 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
           <button
             type="button"
             className="h-full flex-1 cursor-default"
-            aria-label="닫기"
+            aria-label={t.btn_close}
             onClick={() => setHistoryOpen(false)}
           />
           <div className="flex h-full w-full max-w-md flex-col border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">변경 이력</p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{t.btn_history}</p>
               <button
                 type="button"
                 className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 onClick={() => setHistoryOpen(false)}
               >
-                닫기
+                {t.btn_close}
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3">
               {history.length === 0 ? (
-                <p className="text-sm text-zinc-500">변경 내역이 없습니다.</p>
+                <p className="text-sm text-zinc-500">{t.state_empty_history}</p>
               ) : (
                 <ul className="flex flex-col gap-3">
                   {history.map((e) => (
@@ -910,7 +913,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
         className="fixed bottom-20 right-4 z-[90] rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-md hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
         onClick={() => setHistoryOpen(true)}
       >
-        변경 이력 {history.length > 0 ? `(${history.length})` : ""}
+        {t.btn_history}{history.length > 0 ? ` (${history.length})` : ""}
       </button>
 
       {/* ── 통계 카드 + 필터바 (crm-subheader-portal로 portal) ──────────── */}
@@ -919,20 +922,20 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
           <>
             {/* 통계 카드 (필터바 위) */}
             <div className="flex gap-2 border-b border-zinc-200 bg-white px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950">
-              <StatCard label="진행 주문" value={stats.activeOrders} color="bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300" />
-              <StatCard label="전체 라인" value={stats.totalLines}   color="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" />
-              <StatCard label="배송 중"   value={stats.inDelivery}   color="bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300" />
-              <StatCard label="잔금 있음" value={stats.withBalance}  color="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300" />
+              <StatCard label={t.stat_active_orders} value={stats.activeOrders} color="bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300" />
+              <StatCard label={t.stat_total_lines}   value={stats.totalLines}   color="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" />
+              <StatCard label={t.stat_in_delivery}   value={stats.inDelivery}   color="bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300" />
+              <StatCard label={t.stat_with_balance}  value={stats.withBalance}  color="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300" />
             </div>
           {/* 필터바 */}
           <div className="w-full border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex flex-wrap items-center gap-2">
               <FilterDropdown
-                label="진행"
+                label={t.filter_progress}
                 field="progress"
                 value={filters.progress}
                 options={[
-                  { label: "전체", value: "" },
+                  { label: t.filter_all, value: "" },
                   ...ORDER_PROGRESS.map((p) => ({ label: p, value: p })),
                 ]}
                 openFilter={openFilter}
@@ -940,11 +943,11 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                 onChange={(v) => setFilters((f) => ({ ...f, progress: v }))}
               />
               <FilterDropdown
-                label="플랫폼"
+                label={t.filter_platform}
                 field="platform"
                 value={filters.platform}
                 options={[
-                  { label: "전체", value: "" },
+                  { label: t.filter_all, value: "" },
                   ...PLATFORMS.map((p) => ({ label: p, value: p })),
                 ]}
                 openFilter={openFilter}
@@ -952,11 +955,11 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                 onChange={(v) => setFilters((f) => ({ ...f, platform: v }))}
               />
               <FilterDropdown
-                label="단품/세트"
+                label={t.filter_set_type}
                 field="setType"
                 value={filters.setType}
                 options={[
-                  { label: "전체", value: "" },
+                  { label: t.filter_all, value: "" },
                   { label: "Single", value: "Single" },
                   { label: "SET", value: "SET" },
                 ]}
@@ -965,11 +968,11 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                 onChange={(v) => setFilters((f) => ({ ...f, setType: v }))}
               />
               <FilterDropdown
-                label="선물"
+                label={t.filter_gift}
                 field="gift"
                 value={filters.gift}
                 options={[
-                  { label: "전체", value: "" },
+                  { label: t.filter_all, value: "" },
                   { label: "no", value: "no" },
                   { label: "ask", value: "ask" },
                 ]}
@@ -978,11 +981,11 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                 onChange={(v) => setFilters((f) => ({ ...f, gift: v }))}
               />
               <FilterDropdown
-                label="사진"
+                label={t.filter_photo}
                 field="photoSent"
                 value={filters.photoSent}
                 options={[
-                  { label: "전체", value: "" },
+                  { label: t.filter_all, value: "" },
                   ...PHOTO_STATUS.map((s) => ({ label: s, value: s })),
                 ]}
                 openFilter={openFilter}
@@ -990,13 +993,13 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                 onChange={(v) => setFilters((f) => ({ ...f, photoSent: v }))}
               />
               <FilterDropdown
-                label="잔금"
+                label={t.filter_balance}
                 field="hasBalance"
                 value={filters.hasBalance}
                 options={[
-                  { label: "전체", value: "" },
-                  { label: "잔금 있음", value: "yes" },
-                  { label: "잔금 없음", value: "no" },
+                  { label: t.filter_all, value: "" },
+                  { label: t.filter_has_balance, value: "yes" },
+                  { label: t.filter_no_balance, value: "no" },
                 ]}
                 openFilter={openFilter}
                 setOpenFilter={setOpenFilter}
@@ -1008,13 +1011,13 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                   onClick={() => setFilters(INITIAL_FILTERS)}
                   className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
                 >
-                  초기화
+                  {t.filter_reset}
                 </button>
               )}
               <DeliveryImportButton onImportDone={fetchOrders} />
               <input
                 type="text"
-                placeholder="주문번호·상품명·고객·옵션 검색…"
+                placeholder={t.orders_search_placeholder}
                 className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                 style={{ minWidth: "220px" }}
                 value={searchQuery}
@@ -1022,7 +1025,9 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
               />
             </div>
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-              주문 {orderCount}건 · 표시 {rowData.length}줄
+              {t.orders_counter
+                .replace("{orders}", String(orderCount))
+                .replace("{lines}", String(rowData.length))}
             </p>
           </div>
           </>,
@@ -1068,7 +1073,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             className="flex items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 px-3 py-1.5 text-sm text-zinc-500 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-600 dark:border-zinc-600 dark:text-zinc-400 dark:hover:border-emerald-500 dark:hover:bg-emerald-950/20 dark:hover:text-emerald-400"
           >
             <span className="text-base font-bold leading-none">+</span>
-            행 추가
+            {t.btn_add_row}
           </button>
         </div>
       </div>
