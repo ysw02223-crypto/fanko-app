@@ -16,6 +16,7 @@ import {
 } from "ag-grid-community";
 import { FormulaBar, type FocusedCell } from "@/components/formula-bar";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { insertOrderHistoryAction } from "@/lib/actions/order-history";
@@ -94,6 +95,24 @@ const ITEM_DB_COL: Partial<Record<keyof OrderGridRow, string>> = {
   item_photo_sent: "photo_sent",
 };
 
+// ── 셀 렌더러: 주문번호 링크 ─────────────────────────────────────────────
+function OrderNumRenderer({ value, data }: ICellRendererParams<OrderGridRow, string>) {
+  if (!value) return null;
+  // draft 행(item_id===null)은 편집 가능하므로 링크 없이 텍스트만
+  if (data?.item_id === null) {
+    return <span className="font-semibold">{value}</span>;
+  }
+  return (
+    <Link
+      href={`/orders/${encodeURIComponent(value)}`}
+      className="font-semibold text-violet-700 hover:underline dark:text-violet-400"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {value}
+    </Link>
+  );
+}
+
 // ── 셀 렌더러: 진행상태 배지 ────────────────────────────────────────────
 function ProgressCellRenderer({ value }: ICellRendererParams<OrderGridRow, string>) {
   if (!value) return <span className="text-zinc-400">—</span>;
@@ -141,7 +160,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       width: 120,
       pinned: "left" as const,
       editable: (params) => params.data?.item_id === null,
-      cellStyle: { fontWeight: 600 },
+      cellRenderer: OrderNumRenderer,
     },
     {
       field: "date",
