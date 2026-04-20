@@ -137,7 +137,7 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "주문번호",
       width: 120,
       pinned: "left" as const,
-      editable: false,
+      editable: (params) => params.data?.item_id === null,
       cellStyle: { fontWeight: 600 },
     },
     {
@@ -774,7 +774,11 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       const colDef = api.getColumnDef(colId);
       const node   = api.getDisplayedRowAtIndex(event.rowIndex);
 
-      if (!colDef || colDef.editable !== true || !node?.data) {
+      const rawEditable = colDef?.editable;
+      const isEditable =
+        rawEditable === true ||
+        (typeof rawEditable === "function" && node?.data?.item_id === null);
+      if (!colDef || !isEditable || !node?.data) {
         setFocusedCell(null);
         return;
       }
