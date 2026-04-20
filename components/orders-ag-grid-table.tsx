@@ -9,10 +9,12 @@ import {
   type ValueFormatterParams,
   type ICellRendererParams,
   type CellValueChangedEvent,
+  type CellClickedEvent,
   type GetRowIdParams,
   type RowClassParams,
   type RowStyle,
 } from "ag-grid-community";
+import { CellEditSheet, type EditingCell } from "@/components/cell-edit-sheet";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -137,6 +139,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       pinned: "left" as const,
       editable: true,
       cellEditor: "agDateStringCellEditor",
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
     },
     // ── 상품 정보 ─────────────────────────────────────────────────────────
     {
@@ -145,6 +149,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 200,
       editable: true,
       cellEditor: "agTextCellEditor",
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
     },
     {
       field: "product_option",
@@ -152,6 +158,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 150,
       editable: true,
       cellEditor: "agTextCellEditor",
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
         value ?? "—",
     },
@@ -162,6 +170,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 135,
       editable: true,
       cellRenderer: ProgressCellRenderer,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       ...selectOpts(ORDER_PROGRESS),
     },
     // ── 단품/세트 ─────────────────────────────────────────────────────────
@@ -170,6 +180,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "단품/세트",
       width: 90,
       editable: true,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       ...selectOpts(SET_TYPES),
       cellStyle: (params) =>
         params.value === "SET" ? { backgroundColor: "#fee2e2" } : null,
@@ -180,6 +192,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "선물",
       width: 75,
       editable: true,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       ...selectOpts(["no", "ask"] as const),
       cellStyle: (params) =>
         params.value === "ask" ? { backgroundColor: "#fee2e2" } : null,
@@ -190,6 +204,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "사진",
       width: 95,
       editable: true,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       ...selectOpts(PHOTO_STATUS),
     },
     // ── 플랫폼 ───────────────────────────────────────────────────────────
@@ -198,6 +214,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "플랫폼",
       width: 90,
       editable: true,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       ...selectOpts(PLATFORMS),
     },
     // ── 경로 ─────────────────────────────────────────────────────────────
@@ -206,6 +224,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "경로",
       width: 85,
       editable: true,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       ...selectOpts(ORDER_ROUTES),
     },
     // ── 고객명 ───────────────────────────────────────────────────────────
@@ -215,6 +235,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 130,
       editable: true,
       cellEditor: "agTextCellEditor",
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
         value ?? "—",
     },
@@ -225,6 +247,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 100,
       editable: true,
       cellEditor: "agTextCellEditor",
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
         value ?? "—",
     },
@@ -234,6 +258,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "카테고리",
       width: 105,
       editable: true,
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       ...selectOpts(["", ...PRODUCT_CATEGORIES] as const),
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
         value ?? "—",
@@ -246,6 +272,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 1, precision: 0 },
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
     },
     // ── 판매가₽ ───────────────────────────────────────────────────────────
     {
@@ -255,6 +283,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       valueFormatter: rubFormatter,
     },
     // ── 원화매입₩ ─────────────────────────────────────────────────────────
@@ -265,6 +295,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       valueFormatter: krwFormatter,
     },
     // ── 선결제₽ ───────────────────────────────────────────────────────────
@@ -275,6 +307,8 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
+      cellEditorPopup: true,
+      cellEditorPopupPosition: "over" as const,
       valueFormatter: rubFormatter,
     },
     // ── 잔금₽ (computed, 읽기 전용) ───────────────────────────────────────
@@ -355,6 +389,8 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const [history, setHistory]         = useState<HistoryEntry[]>([]);
   const [toast, setToast]             = useState<string | null>(null);
   const [toastType, setToastType]     = useState<"error" | "success">("error");
+  const [isMobile, setIsMobile]       = useState(false);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
 
   const colDefs = useMemo(() => buildColDefs(), []);
 
@@ -362,6 +398,16 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     () => ({ resizable: true, sortable: false, minWidth: 60 }),
     [],
   );
+
+  // ── isMobile 감지 (resize debounce 200ms) ───────────────────────────────
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 1024);
+    check();
+    let tid: ReturnType<typeof setTimeout>;
+    const debounced = () => { clearTimeout(tid); tid = setTimeout(check, 200); };
+    window.addEventListener("resize", debounced);
+    return () => { window.removeEventListener("resize", debounced); clearTimeout(tid); };
+  }, []);
 
   // ── portal mount ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -445,21 +491,21 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   // ── Supabase 클라이언트 (싱글턴) ────────────────────────────────────────
   const supabase = useMemo(() => createClient(), []);
 
-  // ── onCellValueChanged: 저장 + 이력 기록 ─────────────────────────────────
-  const handleCellValueChanged = useCallback(
-    async (event: CellValueChangedEvent<OrderGridRow>) => {
-      const fieldRaw = event.colDef.field;
-      if (!fieldRaw) return;
-      const field = fieldRaw as keyof OrderGridRow;
-      const row = event.data;
-
-      const oldVal = String(event.oldValue ?? "");
-      const newVal = String(event.newValue ?? "");
+  // ── 공통 저장 로직 (데스크탑·모바일 공유) ───────────────────────────────
+  const saveFieldChange = useCallback(
+    async (
+      field: keyof OrderGridRow,
+      row: OrderGridRow,
+      oldValue: string | number | null,
+      newValue: string | number | null,
+      revertFn: () => void,
+    ) => {
+      const oldVal = String(oldValue ?? "");
+      const newVal = String(newValue ?? "");
       if (oldVal === newVal) return;
 
       try {
         if (ORDER_FIELDS.has(field)) {
-          // ── orders 테이블 업데이트 ─────────────────────────────────────
           const dbCol = ORDER_DB_COL[field] ?? (field as string);
           const { error } = await supabase
             .from("orders")
@@ -467,27 +513,25 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             .eq("order_num", row.order_num);
           if (error) throw new Error(error.message);
 
-          // 같은 주문번호의 다른 행도 동기화 (order 필드는 주문 전체에 영향)
           setAllRows((prev) =>
             prev.map((r) =>
-              r.order_num === row.order_num ? { ...r, [field]: newVal || null } : r,
+              r.order_num === row.order_num
+                ? ({ ...r, [field]: newVal || null } as OrderGridRow)
+                : r,
             ),
           );
         } else if (row.item_id) {
-          // ── order_items 테이블 업데이트 ───────────────────────────────
           const dbCol = ITEM_DB_COL[field] ?? (field as string);
           const basePayload: Record<string, string | number | null> = {
             [dbCol]: newVal || null,
           };
 
-          // price_rub 또는 prepayment_rub 변경 시 extra_payment_rub 재계산
           if (field === "price_rub" || field === "prepayment_rub") {
             const newNum = Number(newVal);
-            const price   = field === "price_rub"    ? newNum : row.price_rub;
-            const prepay  = field === "prepayment_rub" ? newNum : row.prepayment_rub;
+            const price  = field === "price_rub"      ? newNum : row.price_rub;
+            const prepay = field === "prepayment_rub"  ? newNum : row.prepayment_rub;
             basePayload["extra_payment_rub"] = price - prepay;
           }
-          // 숫자 필드 변환
           if (["quantity", "price_rub", "prepayment_rub", "krw"].includes(field as string)) {
             basePayload[dbCol] = newVal === "" ? null : Number(newVal);
           }
@@ -499,11 +543,10 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             .eq("order_num", row.order_num);
           if (error) throw new Error(error.message);
 
-          // 로컬 상태 동기화
           setAllRows((prev) =>
             prev.map((r) => {
               if (r.item_id !== row.item_id) return r;
-              const updated = { ...r, [field]: event.newValue };
+              const updated = { ...r, [field]: newValue } as OrderGridRow;
               if ("extra_payment_rub" in basePayload) {
                 updated.extra_payment_rub = basePayload["extra_payment_rub"] as number;
               }
@@ -512,7 +555,6 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
           );
         }
 
-        // ── 이력 기록 ────────────────────────────────────────────────────
         await insertOrderHistoryAction({
           order_num: row.order_num,
           field: field as string,
@@ -536,14 +578,64 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
         setToastType("success");
         setToast("저장했습니다.");
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "저장 실패";
-        // 실패 시 셀 값 롤백
-        event.node.setDataValue(field as string, event.oldValue);
+        revertFn();
         setToastType("error");
-        setToast(msg);
+        setToast(err instanceof Error ? err.message : "저장 실패");
       }
     },
     [supabase],
+  );
+
+  // ── AG Grid onCellValueChanged 래퍼 (데스크탑) ──────────────────────────
+  const handleCellValueChanged = useCallback(
+    (event: CellValueChangedEvent<OrderGridRow>) => {
+      const fieldRaw = event.colDef.field;
+      if (!fieldRaw) return;
+      const field = fieldRaw as keyof OrderGridRow;
+      void saveFieldChange(
+        field,
+        event.data,
+        event.oldValue as string | number | null,
+        event.newValue as string | number | null,
+        () => event.node.setDataValue(field as string, event.oldValue),
+      );
+    },
+    [saveFieldChange],
+  );
+
+  // ── 모바일 시트 저장 래퍼 ────────────────────────────────────────────────
+  const handleSheetSave = useCallback(
+    (
+      field: keyof OrderGridRow,
+      rowData: OrderGridRow,
+      newValue: string | number | null,
+    ) => {
+      void saveFieldChange(
+        field,
+        rowData,
+        rowData[field] as string | number | null,
+        newValue,
+        () => {},
+      );
+    },
+    [saveFieldChange],
+  );
+
+  // ── 모바일 셀 클릭 인터셉터 ─────────────────────────────────────────────
+  const handleCellClicked = useCallback(
+    (event: CellClickedEvent<OrderGridRow>) => {
+      if (!isMobile) return;
+      const field = event.colDef.field as keyof OrderGridRow | undefined;
+      if (!field || event.colDef.editable !== true || !event.data) return;
+      event.api.stopEditing(true);
+      setEditingCell({
+        field,
+        fieldLabel: event.colDef.headerName ?? (field as string),
+        currentValue: event.data[field] as string | number | null,
+        rowData: event.data,
+      });
+    },
+    [isMobile],
   );
 
   // ── 데이터 새로고침 (배송 import 후 호출) ─────────────────────────────────
@@ -787,7 +879,9 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
           defaultColDef={defaultColDef}
           getRowId={getRowId}
           getRowStyle={getRowStyle}
-          onCellValueChanged={(e) => { void handleCellValueChanged(e); }}
+          onCellValueChanged={handleCellValueChanged}
+          onCellClicked={handleCellClicked}
+          suppressClickEdit={isMobile}
           undoRedoCellEditing={true}
           undoRedoCellEditingLimit={30}
           enableCellTextSelection={true}
@@ -796,6 +890,13 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
           rowBuffer={20}
         />
       </div>
+
+      {/* ── 모바일 셀 편집 시트 ──────────────────────────────────────────── */}
+      <CellEditSheet
+        cell={editingCell}
+        onSave={handleSheetSave}
+        onClose={() => setEditingCell(null)}
+      />
     </>
   );
 }

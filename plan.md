@@ -1,436 +1,503 @@
-# UI 리디자인 계획 — 대안2 사이드바 + 대안4 통계 카드
+# 셀 편집 UX 개선 — 데스크탑 팝업 에디터 + 모바일 키보드 위 시트
 
-> 목표 ①: 현재 상단 탭 내비게이션 → **대안2 스타일 다크 사이드바**로 교체  
-> 목표 ②: 주문 목록 최상단에 **대안4 스타일 통계 카드** 4개 추가  
-> 목표 ③: 모바일에서는 작은 메뉴 아이콘 → **좌측 슬라이드인 사이드바**
+> **목표 ①**: 데스크탑에서 셀 클릭 시 셀 위에 넓고 긴 팝업 편집 UI 표시  
+> **목표 ②**: 모바일·태블릿에서 셀 클릭 시 가상 키보드 바로 위에 바텀시트 에디터 표시  
+> **목표 ③**: 기존 Supabase 저장 · 이력 기록 · undo/redo 로직 100% 재사용
 
 ---
 
 ## 1. 접근방식
 
-### 1-1. 변경 범위
+### 1-1. 2-모드 에디터 전략
 
-| 파일 | 변경 유형 | 내용 |
-|------|-----------|------|
-| `components/crm-shell.tsx` | **전면 수정** | 상단 헤더 제거 → 좌측 사이드바 + 모바일 토글 |
-| `components/nav-menu.tsx` | **전면 수정** | 수평 탭 → 아이콘+텍스트 수직 nav 아이템 |
-| `components/orders-ag-grid-table.tsx` | **소폭 추가** | 그리드 위에 통계 카드 4개 |
-| `app/orders/layout.tsx` 외 4개 | **유지** | CrmShell을 그대로 사용하므로 변경 불필요 |
-
-### 1-2. 레이아웃 구조 비교
+| 환경 | 메커니즘 | 트리거 |
+|------|----------|--------|
+| 데스크탑 (≥ 1024px) | AG Grid `cellEditorPopup: true` | 셀 더블클릭 or 타이핑 시작 |
+| 모바일·태블릿 (< 1024px) | `CellEditSheet` (React Portal) | `onCellClicked` 인터셉터 |
 
 ```
-[현재]
-┌────────────────────────────────────────────────┐
-│ header (top-sticky, 52px)                      │
-│   FANKO CRM   [주문목록] [재무관리]  [아바타]  │
-├────────────────────────────────────────────────┤
-│ #crm-subheader-portal (filter bar, sticky)     │
-├────────────────────────────────────────────────┤
-│ <main> page content                            │
-└────────────────────────────────────────────────┘
-
-[변경 후]
-┌──────────┬───────────────────────────────────────┐
-│          │  topbar (mobile only: 52px)            │
-│ sidebar  ├───────────────────────────────────────┤
-│  (220px) │  #crm-subheader-portal (filter bar)   │
-│  dark    ├───────────────────────────────────────┤
-│  fixed   │  통계 카드 4개 (orders 페이지만)       │
-│          ├───────────────────────────────────────┤
-│          │  <main> page content                  │
-└──────────┴───────────────────────────────────────┘
+[셀 클릭]
+    ↓
+[isMobile? (window.innerWidth < 1024)]
+  ├── No  → AG Grid 기본 편집 진입
+  │         cellEditorPopup: true → 셀 위 넓은 팝업 표시
+  │         onCellValueChanged → Supabase 저장 (기존 로직 유지)
+  └── Yes → AG Grid 편집 억제 (suppressClickEdit)
+            editingCell 상태 저장 { field, currentValue, rowData }
+            CellEditSheet 렌더링 (position: fixed, bottom = keyboardHeight)
+            저장 클릭 → handleSheetSave → 기존 handleCellValueChanged 재사용
 ```
 
-### 1-3. 대안2 사이드바 구조 (HTML 원본 분석)
+### 1-2. 데스크탑: AG Grid Popup Editor
 
-```
-.a2-sidebar (width:220px, bg:#0f172a)
-  ├── .a2-logo          — "FANKO" + "CRM v2" 부제목
-  ├── .a2-nav-section   — "러시아 주문" 섹션
-  │     ├── 주문 목록   (icon + text, active 시 bg:#1e1b4b, color:#a78bfa)
-  │     ├── 신규 주문
-  │     ├── 배송 관리
-  │     └── 변경 이력
-  ├── .a2-nav-section   — "재무" 섹션
-  │     ├── 재무 대시보드
-  │     └── 수입/지출 내역
-  └── 하단 user 영역    — email + 로그아웃
+`buildColDefs()` 안의 모든 editable 컬럼에 두 개 prop 추가:
+
+```ts
+cellEditorPopup: true,
+cellEditorPopupPosition: "over",   // 셀 위(위쪽)에 팝업 표시
 ```
 
-### 1-4. 대안4 통계 카드 구조 (HTML 원본 분석)
+AG Grid는 팝업을 그리드 컨테이너 내부에 absolute 위치로 렌더링. 기본 너비가 컬럼 너비를 따르므로 `app/globals.css`에서 `.ag-popup-editor` 최소 너비를 280px로 강제 확장.
+
+### 1-3. 모바일: CellEditSheet + visualViewport
 
 ```
-.a4-stats (bg:#f1f5f9, padding:14px 24px, flex, gap:12px)
-  ├── .a4-stat.highlight  — 진행 중 주문 (색상 강조)
-  ├── .a4-stat            — 표시 상품 라인
-  ├── .a4-stat            — IN DELIVERY 건수
-  └── .a4-stat            — 잔금 있는 상품
+┌────────────────────────────────────────┐  window.innerHeight
+│  그리드 (dimmed)                        │
+│  ...                                   │
+├────────────────────────────────────────┤  ← visualViewport 하단
+│  [필드명]                        [✕]   │
+│  현재: 1500 ₽                          │  CellEditSheet
+│  ┌──────────────────────────────────┐  │  position: fixed
+│  │  입력 or 셀렉트                  │  │  bottom: keyboardHeight
+│  └──────────────────────────────────┘  │
+│  [취소]                      [저장]    │
+├────────────────────────────────────────┤
+│  가상 키보드 (keyboardHeight px)        │
+└────────────────────────────────────────┘
 ```
 
-### 1-5. 모바일 동작
-
+`window.visualViewport` resize 이벤트로 키보드 높이를 실시간 감지:
+```ts
+keyboardHeight = Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop)
 ```
-모바일 (< lg = 1024px)
-  ├── 사이드바: transform: translateX(-100%)  [기본: 숨김]
-  ├── topbar 52px 표시 (모바일 전용)
-  │     ├── [☰] 메뉴 버튼 (좌측)
-  │     └── FANKO CRM 로고 + 새 주문 버튼 (우측)
-  └── [☰] 클릭 시
-        ├── 사이드바: translateX(0)  [슬라이드인]
-        └── 반투명 오버레이 표시 (클릭 시 닫힘)
 
-데스크탑 (≥ lg)
-  ├── 사이드바: 항상 표시 (position static, flex-shrink-0)
-  └── topbar: hidden
+select 필드(진행상태, 플랫폼 등)는 네이티브 `<select>` 사용 → iOS 기본 picker UI 활용, 키보드 없이 동작.  
+text/number 필드는 `<input>` focus 시 키보드 올라옴 → visualViewport resize 이벤트 감지.
+
+### 1-4. handleCellValueChanged 재사용
+
+모바일 저장 시 기존 `handleCellValueChanged`에 synthetic event를 전달해 Supabase 저장·이력·toast 로직을 완전히 재사용:
+
+```ts
+// 공통 saveFieldChange 함수로 추출
+async function saveFieldChange(
+  field: keyof OrderGridRow,
+  rowData: OrderGridRow,
+  oldValue: OrderGridRow[typeof field],
+  newValue: OrderGridRow[typeof field],
+  revertFn: () => void,
+) { ... }
+// Desktop onCellValueChanged → saveFieldChange 호출
+// Mobile handleSheetSave   → saveFieldChange 호출
 ```
+
+기존 `handleCellValueChanged` 내부 로직을 독립 함수로 추출하여 양쪽에서 호출. `event.node.setDataValue` rollback은 `revertFn` 콜백으로 추상화.
 
 ---
 
 ## 2. 코드 스니펫
 
-### 2-1. `components/crm-shell.tsx` (전체 교체)
+### 2-1. `hooks/use-keyboard-height.ts` (신규)
 
-```tsx
+```ts
 "use client";
 
-import { signOut } from "@/lib/actions/auth";
-import Link from "next/link";
-import { useState } from "react";
-import { SidebarNav } from "@/components/nav-menu";
+import { useEffect, useState } from "react";
 
-export function CrmShell({
-  email,
-  children,
-}: {
-  email: string;
-  children: React.ReactNode;
-}) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+export function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-slate-950">
-      {/* ── 모바일 오버레이 ─────────────────────────────────── */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
 
-      {/* ── 사이드바 ────────────────────────────────────────── */}
-      <aside
-        className={`
-          fixed inset-y-0 left-0 z-50 flex w-56 flex-col
-          border-r border-slate-800 bg-slate-900
-          transition-transform duration-200
-          lg:static lg:translate-x-0
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        `}
-      >
-        {/* 로고 */}
-        <div className="border-b border-slate-800 px-5 py-5">
-          <Link href="/orders" className="block">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-600 text-xs font-bold text-white">
-                F
-              </div>
-              <span className="text-sm font-bold text-violet-400 tracking-tight">
-                FANKO <span className="font-medium text-slate-400">CRM</span>
-              </span>
-            </div>
-          </Link>
-        </div>
+    const update = () => {
+      const kbHeight = Math.max(
+        0,
+        window.innerHeight - vv.height - vv.offsetTop,
+      );
+      setHeight(kbHeight);
+    };
 
-        {/* 내비게이션 */}
-        <div className="flex-1 overflow-y-auto py-3">
-          <SidebarNav onNavigate={() => setSidebarOpen(false)} />
-        </div>
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
 
-        {/* 하단 유저 영역 */}
-        <div className="border-t border-slate-800 px-5 py-4">
-          <p className="truncate text-xs text-slate-500">{email}</p>
-          <form action={signOut} className="mt-2">
-            <button
-              type="submit"
-              className="rounded border border-slate-700 px-3 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition"
-            >
-              로그아웃
-            </button>
-          </form>
-        </div>
-      </aside>
-
-      {/* ── 메인 영역 ───────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
-        {/* 모바일 topbar */}
-        <header className="flex h-[52px] items-center gap-3 border-b border-zinc-200 bg-white px-4 lg:hidden dark:border-zinc-800 dark:bg-zinc-900">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(true)}
-            className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label="메뉴 열기"
-          >
-            {/* 햄버거 아이콘 */}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-          <span className="text-sm font-bold text-zinc-800 dark:text-zinc-100">FANKO CRM</span>
-          <Link
-            href="/orders/new"
-            className="ml-auto flex items-center gap-1 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
-          >
-            + 새 주문
-          </Link>
-        </header>
-
-        {/* 필터바 portal 슬롯 */}
-        <div id="crm-subheader-portal" className="z-30 flex-none" />
-
-        {/* 페이지 콘텐츠 */}
-        <main className="flex-1 overflow-hidden">{children}</main>
-      </div>
-    </div>
-  );
+  return height;
 }
 ```
 
-### 2-2. `components/nav-menu.tsx` (전체 교체 → SidebarNav)
+### 2-2. `components/cell-edit-sheet.tsx` (신규)
 
 ```tsx
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
+import { useKeyboardHeight } from "@/hooks/use-keyboard-height";
+import {
+  ORDER_PROGRESS, PLATFORMS, ORDER_ROUTES,
+  PRODUCT_CATEGORIES, SET_TYPES, PHOTO_STATUS,
+} from "@/lib/schema";
+import type { OrderGridRow } from "@/lib/orders-ag-grid-types";
 
-type NavItem = {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  disabled?: boolean;
+// ── 공개 타입 (orders-ag-grid-table.tsx에서도 import) ─────────────────────
+export type EditingCell = {
+  field: keyof OrderGridRow;
+  fieldLabel: string;
+  currentValue: string | number | null;
+  rowData: OrderGridRow;
 };
 
-const ORDER_NAV: NavItem[] = [
-  {
-    label: "주문 목록",
-    href: "/orders",
-    icon: <IconList />,
-  },
-  {
-    label: "신규 주문",
-    href: "/orders/new",
-    icon: <IconPlus />,
-  },
-  {
-    label: "배송 관리",
-    href: "/shipping",
-    icon: <IconTruck />,
-    disabled: true,
-  },
-  {
-    label: "변경 이력",
-    href: "/history",
-    icon: <IconClock />,
-    disabled: true,
-  },
-];
+type Props = {
+  cell: EditingCell | null;
+  onSave: (
+    field: keyof OrderGridRow,
+    rowData: OrderGridRow,
+    newValue: string | number | null,
+  ) => void;
+  onClose: () => void;
+};
 
-const FINANCE_NAV: NavItem[] = [
-  {
-    label: "재무 대시보드",
-    href: "/finance",
-    icon: <IconChart />,
-  },
-  {
-    label: "수입 내역",
-    href: "/finance/income",
-    icon: <IconArrowUp />,
-  },
-  {
-    label: "지출 내역",
-    href: "/finance/expense",
-    icon: <IconArrowDown />,
-  },
-];
+// ── select 필드 → 선택지 매핑 ────────────────────────────────────────────
+const SELECT_OPTIONS: Partial<Record<keyof OrderGridRow, readonly string[]>> = {
+  item_progress:    ORDER_PROGRESS,
+  platform:         PLATFORMS,
+  order_type:       ORDER_ROUTES,
+  product_type:     ["", ...PRODUCT_CATEGORIES],
+  product_set_type: SET_TYPES,
+  item_gift:        ["no", "ask"],
+  order_gift:       ["no", "ask"],
+  item_photo_sent:  PHOTO_STATUS,
+  order_photo_sent: PHOTO_STATUS,
+};
 
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
-  const pathname = usePathname();
+const NUMBER_FIELDS = new Set<keyof OrderGridRow>([
+  "quantity", "price_rub", "krw", "prepayment_rub",
+]);
 
-  function isActive(href: string) {
-    if (href === "/orders") return pathname === href || pathname.startsWith("/orders/") && !pathname.startsWith("/orders/new");
-    return pathname === href || pathname.startsWith(href + "/");
-  }
+export function CellEditSheet({ cell, onSave, onClose }: Props) {
+  const keyboardHeight = useKeyboardHeight();
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  return (
-    <div className="flex flex-col gap-0">
-      {/* 섹션 1: 러시아 주문 */}
-      <NavSection label="러시아 주문">
-        {ORDER_NAV.map((item) => (
-          <NavItem
-            key={item.href}
-            item={item}
-            active={isActive(item.href)}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </NavSection>
+  useEffect(() => {
+    if (!cell) return;
+    setValue(cell.currentValue != null ? String(cell.currentValue) : "");
+    setTimeout(() => inputRef.current?.focus(), 80);
+  }, [cell]);
 
-      {/* 섹션 2: 재무 */}
-      <NavSection label="재무">
-        {FINANCE_NAV.map((item) => (
-          <NavItem
-            key={item.href}
-            item={item}
-            active={isActive(item.href)}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </NavSection>
-    </div>
-  );
-}
+  if (!cell || typeof document === "undefined") return null;
 
-function NavSection({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="px-3 py-2">
-      <p className="mb-1 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-        {label}
-      </p>
-      <div className="flex flex-col gap-0.5">{children}</div>
-    </div>
-  );
-}
+  const options  = SELECT_OPTIONS[cell.field];
+  const isNumber = NUMBER_FIELDS.has(cell.field);
 
-function NavItem({
-  item,
-  active,
-  onNavigate,
-}: {
-  item: NavItem;
-  active: boolean;
-  onNavigate?: () => void;
-}) {
-  if (item.disabled) {
-    return (
-      <span className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-600 opacity-50 select-none">
-        {item.icon}
-        {item.label}
-      </span>
-    );
-  }
+  const handleSave = () => {
+    const parsed: string | number | null = isNumber
+      ? (value === "" ? null : Number(value))
+      : value || null;
+    onSave(cell.field, cell.rowData, parsed);
+    onClose();
+  };
 
-  return (
-    <Link
-      href={item.href}
-      onClick={onNavigate}
-      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
-        active
-          ? "bg-violet-900/40 font-medium text-violet-300"
-          : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-      }`}
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[300]"
+      onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {item.icon}
-      {item.label}
-    </Link>
-  );
-}
+      <div className="absolute inset-0 bg-black/30" />
 
-/* ── SVG 아이콘 ──────────────────────────────────────────── */
-function IconList() {
-  return (
-    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-      <path d="M4 4h12v2H4V4zm0 5h12v2H4V9zm0 5h12v2H4v-2z" />
-    </svg>
-  );
-}
-function IconPlus() {
-  return (
-    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-      <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
-    </svg>
-  );
-}
-function IconTruck() {
-  return (
-    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-      <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
-      <path d="M3 4a1 1 0 00-1 1v9a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1v-1h3.05a2.5 2.5 0 014.9 0H19a1 1 0 001-1v-4a1 1 0 00-.293-.707L17 5.586A1 1 0 0016.293 5H11V4a1 1 0 00-1-1H3z" />
-    </svg>
-  );
-}
-function IconClock() {
-  return (
-    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-    </svg>
-  );
-}
-function IconChart() {
-  return (
-    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-      <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-    </svg>
-  );
-}
-function IconArrowUp() {
-  return (
-    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-    </svg>
-  );
-}
-function IconArrowDown() {
-  return (
-    <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" />
-    </svg>
+      <div
+        className="absolute left-0 right-0 rounded-t-2xl bg-white px-4 pb-6 pt-3 shadow-2xl dark:bg-zinc-900"
+        style={{ bottom: keyboardHeight }}
+      >
+        {/* 드래그 핸들 */}
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-200 dark:bg-zinc-700" />
+
+        {/* 헤더 */}
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+            {cell.fieldLabel}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* 현재값 */}
+        <p className="mb-2 text-xs text-zinc-400">
+          현재: <span className="font-medium text-zinc-600 dark:text-zinc-300">{cell.currentValue ?? "—"}</span>
+        </p>
+
+        {/* 입력 UI */}
+        {options ? (
+          <select
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+          >
+            {options.map((opt) => (
+              <option key={opt} value={opt}>{opt || "（없음）"}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            ref={inputRef}
+            type={isNumber ? "number" : "text"}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter")  handleSave();
+              if (e.key === "Escape") onClose();
+            }}
+            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+            inputMode={isNumber ? "numeric" : "text"}
+          />
+        )}
+
+        {/* 버튼 */}
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-zinc-200 py-2.5 text-sm font-medium text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="flex-1 rounded-xl bg-emerald-500 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600"
+          >
+            저장
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 ```
 
-### 2-3. 통계 카드 — `components/orders-ag-grid-table.tsx` 내 추가
+### 2-3. `orders-ag-grid-table.tsx` 수정 부분
 
-`rowData` 계산 이후, AG Grid div 위에 삽입:
+#### ① import 추가
+```tsx
+import { CellEditSheet, type EditingCell } from "@/components/cell-edit-sheet";
+import type { CellClickedEvent } from "ag-grid-community";
+```
+
+#### ② isMobile 상태
+```tsx
+const [isMobile, setIsMobile] = useState(false);
+useEffect(() => {
+  const check = () => setIsMobile(window.innerWidth < 1024);
+  check();
+  window.addEventListener("resize", check);
+  return () => window.removeEventListener("resize", check);
+}, []);
+```
+
+#### ③ editingCell 상태
+```tsx
+const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+```
+
+#### ④ handleCellValueChanged → saveFieldChange 리팩토링
+
+기존 `handleCellValueChanged` 내부 로직을 아래 독립 함수로 추출:
 
 ```tsx
-// allRows 기반 통계 (필터 미적용 전체 데이터)
-const stats = useMemo(() => {
-  const activeOrderNums = new Set(
-    allRows
-      .filter((r) => r.item_progress !== "DONE" && r.item_progress !== "CANCEL")
-      .map((r) => r.order_num),
-  );
-  const inDelivery = allRows.filter((r) => r.item_progress === "IN DELIVERY").length;
-  const withBalance = allRows.filter((r) => r.extra_payment_rub > 0).length;
-  return {
-    activeOrders: activeOrderNums.size,
-    totalLines: allRows.length,
-    inDelivery,
-    withBalance,
-  };
-}, [allRows]);
+const saveFieldChange = useCallback(
+  async (
+    field: keyof OrderGridRow,
+    row: OrderGridRow,
+    oldVal: unknown,
+    newVal: unknown,
+    revertFn: () => void,
+  ) => {
+    const oldStr = String(oldVal ?? "");
+    const newStr = String(newVal ?? "");
+    if (oldStr === newStr) return;
 
-// JSX — AG Grid div 바로 위에 삽입
-<div className="flex gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/50">
-  <StatCard value={stats.activeOrders} label="진행 중 주문" accent />
-  <StatCard value={stats.totalLines}   label="전체 상품 라인" />
-  <StatCard value={stats.inDelivery}   label="IN DELIVERY" />
-  <StatCard value={stats.withBalance}  label="잔금 있는 상품" />
-</div>
+    try {
+      if (ORDER_FIELDS.has(field)) {
+        const dbCol = ORDER_DB_COL[field] ?? (field as string);
+        const { error } = await supabase
+          .from("orders")
+          .update({ [dbCol]: newStr || null })
+          .eq("order_num", row.order_num);
+        if (error) throw new Error(error.message);
+        setAllRows((prev) =>
+          prev.map((r) =>
+            r.order_num === row.order_num ? { ...r, [field]: newStr || null } : r,
+          ),
+        );
+      } else if (row.item_id) {
+        const dbCol = ITEM_DB_COL[field] ?? (field as string);
+        const basePayload: Record<string, string | number | null> = {
+          [dbCol]: newStr || null,
+        };
+        if (field === "price_rub" || field === "prepayment_rub") {
+          const newNum = Number(newStr);
+          const price  = field === "price_rub"    ? newNum : row.price_rub;
+          const prepay = field === "prepayment_rub" ? newNum : row.prepayment_rub;
+          basePayload["extra_payment_rub"] = price - prepay;
+        }
+        if (["quantity", "price_rub", "prepayment_rub", "krw"].includes(field as string)) {
+          basePayload[dbCol] = newStr === "" ? null : Number(newStr);
+        }
+        const { error } = await supabase
+          .from("order_items")
+          .update(basePayload)
+          .eq("id", row.item_id)
+          .eq("order_num", row.order_num);
+        if (error) throw new Error(error.message);
+        setAllRows((prev) =>
+          prev.map((r) => {
+            if (r.item_id !== row.item_id) return r;
+            const updated = { ...r, [field]: newVal };
+            if ("extra_payment_rub" in basePayload) {
+              updated.extra_payment_rub = basePayload["extra_payment_rub"] as number;
+            }
+            return updated;
+          }),
+        );
+      }
 
-// StatCard 서브 컴포넌트
-function StatCard({ value, label, accent }: { value: number; label: string; accent?: boolean }) {
-  return (
-    <div className="flex-1 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-      <div className={`text-2xl font-extrabold ${accent ? "text-violet-600 dark:text-violet-400" : "text-zinc-900 dark:text-zinc-100"}`}>
-        {value}
-      </div>
-      <div className="mt-0.5 text-xs text-zinc-400">{label}</div>
-    </div>
-  );
+      await insertOrderHistoryAction({
+        order_num: row.order_num,
+        field: field as string,
+        old_value: oldStr,
+        new_value: newStr,
+        changed_by: "수동변경",
+      });
+      setHistory((prev) => [
+        { id: `${Date.now()}-${Math.random()}`, at: Date.now(), orderNum: row.order_num,
+          field: field as string, oldDisplay: oldStr || "（비어 있음）", newDisplay: newStr || "（비어 있음）" },
+        ...prev.slice(0, 29),
+      ]);
+      setToastType("success");
+      setToast("저장했습니다.");
+    } catch (err) {
+      revertFn();
+      setToastType("error");
+      setToast(err instanceof Error ? err.message : "저장 실패");
+    }
+  },
+  [supabase],
+);
+
+// 기존 handleCellValueChanged는 saveFieldChange를 래핑
+const handleCellValueChanged = useCallback(
+  (event: CellValueChangedEvent<OrderGridRow>) => {
+    const field = event.colDef.field as keyof OrderGridRow | undefined;
+    if (!field) return;
+    void saveFieldChange(
+      field,
+      event.data,
+      event.oldValue,
+      event.newValue,
+      () => event.node.setDataValue(field as string, event.oldValue),
+    );
+  },
+  [saveFieldChange],
+);
+
+// 모바일 시트 저장
+const handleSheetSave = useCallback(
+  (field: keyof OrderGridRow, rowData: OrderGridRow, newValue: string | number | null) => {
+    void saveFieldChange(field, rowData, rowData[field], newValue, () => {});
+  },
+  [saveFieldChange],
+);
+```
+
+#### ⑤ onCellClicked (모바일 인터셉터)
+```tsx
+const handleCellClicked = useCallback(
+  (event: CellClickedEvent<OrderGridRow>) => {
+    if (!isMobile) return;
+    const field = event.colDef.field as keyof OrderGridRow | undefined;
+    const editable = typeof event.colDef.editable === "boolean"
+      ? event.colDef.editable
+      : event.colDef.editable?.(event as Parameters<typeof event.colDef.editable>[0]);
+    if (!field || !editable || !event.data) return;
+    event.api.stopEditing(true);
+    setEditingCell({
+      field,
+      fieldLabel: event.colDef.headerName ?? (field as string),
+      currentValue: event.data[field] as string | number | null,
+      rowData: event.data,
+    });
+  },
+  [isMobile],
+);
+```
+
+#### ⑥ buildColDefs — cellEditorPopup 추가 (text/number 컬럼)
+```tsx
+// 텍스트 컬럼 예시 (product_name, product_option, customer_name, purchase_channel)
+{
+  field: "product_name",
+  headerName: "상품명",
+  width: 200,
+  editable: true,
+  cellEditor: "agTextCellEditor",
+  cellEditorPopup: true,
+  cellEditorPopupPosition: "over",
+},
+
+// 숫자 컬럼 예시 (price_rub, krw, prepayment_rub, quantity)
+{
+  field: "price_rub",
+  headerName: "판매가₽",
+  width: 105,
+  editable: true,
+  cellEditor: "agNumberCellEditor",
+  cellEditorParams: { min: 0 },
+  cellEditorPopup: true,
+  cellEditorPopupPosition: "over",
+  valueFormatter: rubFormatter,
+},
+```
+
+#### ⑦ AgGridReact props 수정
+```tsx
+<AgGridReact<OrderGridRow>
+  ...
+  suppressClickEdit={isMobile}
+  onCellClicked={handleCellClicked}
+  onCellValueChanged={handleCellValueChanged}
+/>
+```
+
+#### ⑧ CellEditSheet 렌더링 (return 안에 추가)
+```tsx
+<CellEditSheet
+  cell={editingCell}
+  onSave={handleSheetSave}
+  onClose={() => setEditingCell(null)}
+/>
+```
+
+### 2-4. `app/globals.css` 추가 (데스크탑 팝업 스타일)
+
+```css
+/* AG Grid 팝업 에디터 스타일 — 데스크탑 전용 */
+@media (min-width: 1024px) {
+  .ag-popup-editor {
+    min-width: 280px !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.14) !important;
+    border: 1px solid #e4e4e7 !important;
+    overflow: hidden;
+  }
+  .ag-popup-editor input,
+  .ag-popup-editor select {
+    font-size: 14px;
+    padding: 8px 12px;
+    min-height: 40px;
+  }
 }
 ```
 
@@ -438,106 +505,130 @@ function StatCard({ value, label, accent }: { value: number; label: string; acce
 
 ## 3. 파일 경로
 
+### 신규 파일
+
+| 파일 | 용도 |
+|------|------|
+| `hooks/use-keyboard-height.ts` | visualViewport 기반 가상 키보드 높이 훅 |
+| `components/cell-edit-sheet.tsx` | 모바일 바텀시트 에디터 컴포넌트 |
+
 ### 수정 파일
 
 | 파일 | 변경 내용 |
 |------|-----------|
-| `components/crm-shell.tsx` | 상단 헤더 → 다크 사이드바 + 모바일 토글 |
-| `components/nav-menu.tsx` | 수평 탭 → `SidebarNav` 수직 아이콘+텍스트 |
-| `components/orders-ag-grid-table.tsx` | 통계 카드 4개 + `StatCard` 서브 컴포넌트 추가 |
+| `components/orders-ag-grid-table.tsx` | saveFieldChange 추출, isMobile 감지, onCellClicked, suppressClickEdit, cellEditorPopup, CellEditSheet 렌더링 |
+| `app/globals.css` | `.ag-popup-editor` 팝업 스타일 (데스크탑) |
 
 ### 유지 파일 (변경 없음)
 
 | 파일 | 이유 |
 |------|------|
-| `app/orders/layout.tsx` | `CrmShell`을 그대로 사용 |
-| `app/finance/layout.tsx` | 동일 |
-| `app/history/layout.tsx` | 동일 |
-| `app/shipping/layout.tsx` | 동일 |
-| `lib/actions/*` | 데이터 레이어 무변경 |
 | `lib/orders-ag-grid-types.ts` | 타입 무변경 |
+| `lib/schema.ts` | 상수 무변경 |
+| `lib/actions/order-history.ts` | saveFieldChange에서 그대로 호출 |
+| `components/crm-shell.tsx` | 셀 에디터와 무관 |
 
 ---
 
-## 4. 트레이드오프 상세 설명
+## 4. 트레이드오프 상세설명
 
-### 4-1. 사이드바 고정 방식 (fixed vs static)
+### 4-1. 데스크탑: AG Grid cellEditorPopup vs 완전 커스텀 에디터
 
-| | **fixed + lg:static (채택)** | flex-shrink-0 항상 표시 |
+| | **AG Grid cellEditorPopup (채택)** | ICellEditorComp 완전 커스텀 |
 |---|---|---|
-| 모바일 동작 | 슬라이드인/아웃 가능 | 사이드바가 항상 공간 차지 |
-| 구현 복잡도 | 약간 높음 (z-index, translate) | 단순 |
-| 모바일 UX | 전체 화면 사용 가능 | 공간 낭비 |
+| 구현 복잡도 | prop 2개 추가 | ICellEditorComp 인터페이스 구현 필요 |
+| undo/redo | undoRedoCellEditing과 자동 연동 | 별도 스택 관리 필요 |
+| 위치 제어 | over/under 2가지 | 완전 자유 위치 |
+| 기존 onCellValueChanged | 그대로 사용 | 별도 저장 흐름 필요 |
+| 팝업 크기 | CSS로만 제어 가능 | JSX로 완전 제어 |
 
-`fixed` + `lg:static` 조합: 모바일에서는 오버레이로 떠 있고, 데스크탑에서는 일반 flex item으로 동작.  
-`-translate-x-full` ↔ `translate-x-0` 전환으로 슬라이드 애니메이션.
+결론: 기존 코드 변경 최소화 + undo/redo 유지를 위해 cellEditorPopup 채택.  
+팝업 크기·스타일은 `.ag-popup-editor` CSS 오버라이드로 충분히 제어 가능.
 
-### 4-2. 통계 데이터 소스
+### 4-2. 모바일: visualViewport vs resize 이벤트
 
-| | **allRows 기반 (채택)** | Server에서 계산 |
-|---|---|---|
-| 실시간성 | 클라이언트 상태 즉시 반영 | 페이지 새로고침 필요 |
-| 서버 부하 | 없음 | 추가 쿼리 1회 |
-| 정확성 | 이미 로드된 데이터 | DB 실시간 |
+**visualViewport API** (채택):
+- `vv.height` = 키보드를 제외한 실제 가시 영역 높이
+- iOS Safari, Chrome 61+ 지원 (글로벌 99%+)
+- `scroll` 이벤트도 필요 — iOS에서 키보드 오픈 시 viewport가 scroll되는 경우 있음
 
-`orders-ag-grid-table.tsx`가 이미 전체 주문 데이터를 `allRows`로 갖고 있으므로 추가 쿼리 없이 계산 가능.  
-단, 다른 사용자가 동시에 데이터를 변경해도 반영되지 않는 점은 기존 테이블과 동일한 수준.
+**window.resize fallback**:
+- `window.innerHeight` 변화로 키보드 감지 시도
+- iOS Safari에서 `innerHeight`가 키보드 오픈 시 변하지 않는 경우 있음 → 신뢰 불가
 
-### 4-3. 모바일 topbar 중복 가능성
-
-현재 `CrmShell`에 모바일 전용 topbar를 추가하면 모든 페이지(재무, 이력 등)에서도 표시됨.
-각 페이지에서 일관된 경험을 제공하므로 이는 의도된 동작.
-
-단, `#crm-subheader-portal`의 `top` 오프셋이 이전에는 `52px` (헤더 높이)였는데,
-사이드바 레이아웃에서는 모바일만 topbar가 있으므로 portal 슬롯을 `flex-none`으로 처리하면 자연스럽게 흐름 내 위치.
-
-현재 `orders-ag-grid-table.tsx`의 AG Grid 높이:
-```tsx
-// Before (상단 헤더 기준 오프셋)
-style={{ height: "calc(100vh - 108px)", width: "100%" }}
-
-// After (topbar 없는 데스크탑: 필터바 높이 ~50px만 감산)
-style={{ height: "calc(100vh - 50px)", width: "100%" }}
-// 모바일: topbar(52px) + 필터바(50px) = 102px
-// → CSS로 처리: h-[calc(100vh-50px)] lg:h-[calc(100vh-50px)]
+```ts
+// visualViewport 미지원 시 fallback: bottom: 0 (키보드에 가려질 수 있음)
+const keyboardHeight = vv ? Math.max(0, ...) : 0;
 ```
 
-`crm-stats-portal` 없이 그리드 컴포넌트 내부에 통계를 렌더링하므로, 통계 카드 높이(약 72px)만큼 그리드 높이도 조정 필요.
+### 4-3. suppressClickEdit + onCellClicked 조합 주의점
 
-### 4-4. 다크 테마 사이드바와 라이트 메인 영역 공존
+`suppressClickEdit: true`는 그리드 전체에 적용. `isMobile`이 false로 바뀌어도 즉시 반영되지 않을 수 있음 (React state 비동기 특성).
 
-사이드바는 `bg-slate-900`(다크)이고 메인 영역은 `bg-zinc-50`(라이트).
-Tailwind `dark:` 모드와 무관하게 사이드바는 항상 다크이므로 사이드바 내부에는 `dark:` 클래스 불필요.
-메인 영역은 기존 다크 모드 지원 유지.
+해결: `isMobile` 계산 시 debounce 적용:
+```ts
+const timeoutId = setTimeout(check, 200);
+return () => clearTimeout(timeoutId);
+```
+
+또한 `suppressClickEdit`이 true일 때 데스크탑에서 실수로 `isMobile = true`가 되면 편집이 막힘. 리사이즈 이벤트 + 초기값 정확성 중요.
+
+### 4-4. saveFieldChange 추출 트레이드오프
+
+**현재 구조**: `handleCellValueChanged` 안에 Supabase 업데이트 + 이력 + toast 로직이 인라인
+
+**리팩토링 후**: `saveFieldChange(field, row, oldVal, newVal, revertFn)` 독립 함수
+
+| | Before | After |
+|---|---|---|
+| 코드 중복 | 모바일 저장 시 복붙 필요 | 0 |
+| 타입 안전성 | CellValueChangedEvent 의존 | 순수 인자만 의존 |
+| 테스트 용이성 | AG Grid 이벤트 mock 필요 | 인자만으로 단위 테스트 가능 |
+| rollback 처리 | event.node.setDataValue 직접 | revertFn 콜백으로 추상화 |
+
+모바일 시트에서는 rollback이 불필요(AG Grid 셀이 아님)하므로 `revertFn: () => {}`로 전달.
+
+### 4-5. 모바일 select vs 커스텀 드롭다운
+
+**네이티브 `<select>` (채택)**:
+- iOS: 드럼 롤 picker UI, 키보드 없이 동작 → visualViewport 변화 없음 → `bottom: 0` 고정
+- Android: 팝업 다이얼로그 UI
+- 접근성(a11y) 자동 지원
+- 추가 구현 없음
+
+**커스텀 드롭다운**:
+- 일관된 디자인 가능
+- 키보드 탐색 직접 구현 필요
+- AG Grid SELECT_OPTIONS와 별도 스타일 관리
+
+현재 CRM 도구 특성상 빠른 입력이 중요 → 네이티브 select가 모바일 UX에서 더 효율적.
 
 ---
 
 ## 5. 구현 순서
 
 ```
-Phase 1 — CrmShell 교체 (1일)
-  [x] components/crm-shell.tsx 전면 재작성 (사이드바 + 모바일 토글)
-  [x] components/nav-menu.tsx → SidebarNav 로 전면 재작성 (아이콘+텍스트 수직)
+Phase 1 — 기반 훅 + 컴포넌트 (0.5일)
+  [x] hooks/use-keyboard-height.ts 생성
+  [x] components/cell-edit-sheet.tsx 생성
   [x] typecheck 통과 확인
 
-Phase 2 — 통계 카드 추가 (0.5일)
-  [x] components/orders-ag-grid-table.tsx — StatCard 컴포넌트 + stats 계산
-  [x] AG Grid 높이 calc 조정 → CSS Grid (height: 100% / h-full 방식)
+Phase 2 — AG Grid 통합 (1일)
+  [x] orders-ag-grid-table.tsx: handleCellValueChanged → saveFieldChange 리팩토링
+  [x] isMobile 감지 + editingCell 상태 추가
+  [x] onCellClicked 인터셉터 추가
+  [x] suppressClickEdit={isMobile} 추가
+  [x] buildColDefs: 모든 editable 컬럼에 cellEditorPopup 추가
+  [x] CellEditSheet 렌더링 추가
   [x] typecheck 통과 확인
 
-Phase 3 — 검증 (0.5일)
-  [ ] 데스크탑: 사이드바 고정, 메인 콘텐츠 표시 확인
-  [ ] 모바일: 메뉴 아이콘 → 슬라이드인 → 오버레이 닫힘 확인
-  [ ] 재무/이력/배송 페이지에서도 사이드바 정상 작동 확인
-  [ ] npm run build 오류 없음 확인
+Phase 3 — 스타일 (0.25일)
+  [x] app/globals.css: .ag-popup-editor 스타일 추가
+  [x] typecheck 통과 확인
+
+Phase 4 — 검증 (0.25일)
+  [ ] 데스크탑: text/number 셀 클릭 → 팝업 표시 확인
+  [ ] 데스크탑: select 셀 클릭 → AG Grid select 팝업 표시 확인
+  [ ] 모바일: 셀 클릭 → 바텀시트 표시 + 키보드 오픈 후 위치 확인
+  [ ] 모바일: 저장 → Supabase 반영 + toast 확인
 ```
-
----
-
-## 6. 미결 결정 사항
-
-| 항목 | 선택지 | 결정 필요 시점 |
-|------|--------|---------------|
-| 통계 카드 위치 | 필터바 위 / 필터바 아래 | Phase 2 |
-| AG Grid height 조정 | calc 직접 수정 / CSS Grid로 레이아웃 | Phase 2 |
-| 사이드바 너비 | 220px(대안2 그대로) / 240px | Phase 1 |
