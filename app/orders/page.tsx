@@ -1,5 +1,4 @@
 import { OrdersLineItemsTable } from "@/components/orders-line-items-table";
-import { OrdersPageHeader } from "@/components/orders-page-header";
 import { createClient } from "@/lib/supabase/server";
 import type { OrderWithNestedItems } from "@/lib/orders-line-items-flatten";
 
@@ -41,10 +40,5 @@ export default async function OrdersPage() {
 
   const orders = (rows ?? []) as OrderWithNestedItems[];
 
-  return (
-    <div className="flex flex-col gap-4">
-      <OrdersPageHeader />
-      <OrdersLineItemsTable initialOrders={orders} />
-    </div>
-  );
+  return <OrdersLineItemsTable initialOrders={orders} />;
 }
