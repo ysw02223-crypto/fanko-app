@@ -20,9 +20,10 @@ const ORDER_NAV: NavItem[] = [
 ];
 
 const FINANCE_NAV: NavItem[] = [
-  { label: "재무 대시보드", href: "/finance",         icon: <IconChart /> },
-  { label: "수입 내역",    href: "/finance/income",   icon: <IconArrowUp /> },
-  { label: "지출 내역",    href: "/finance/expense",  icon: <IconArrowDown /> },
+  { label: "재무 대시보드", href: "/finance",           icon: <IconChart /> },
+  { label: "수입 내역",    href: "/finance/income",     icon: <IconArrowUp /> },
+  { label: "지출 내역",    href: "/finance/expense",    icon: <IconArrowDown /> },
+  { label: "환전 환율",    href: "/finance/exchange",   icon: <IconExchange /> },
 ];
 
 // ── 메인 SidebarNav ───────────────────────────────────────────────────────
@@ -232,6 +233,18 @@ function IconArrowDown() {
       <path
         fillRule="evenodd"
         d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+function IconExchange() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+      <path
+        fillRule="evenodd"
+        d="M4 4a1 1 0 000 2h8.586L11.293 7.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L12.586 4H4zm12 12a1 1 0 000-2H7.414l1.293-1.293a1 1 0 10-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L7.414 16H16z"
         clipRule="evenodd"
       />
     </svg>
