@@ -877,7 +877,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             getRowStyle={getRowStyle}
             onCellValueChanged={handleCellValueChanged}
             onCellFocused={handleCellFocused}
-            suppressClickEdit={true}
+            suppressClickEdit={isMobile}
             undoRedoCellEditing={true}
             undoRedoCellEditingLimit={30}
             enableCellTextSelection={true}
