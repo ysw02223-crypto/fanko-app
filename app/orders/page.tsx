@@ -1,4 +1,4 @@
-import { OrdersLineItemsTable } from "@/components/orders-line-items-table";
+import { OrdersAgGrid } from "@/components/orders-ag-grid-table";
 import { createClient } from "@/lib/supabase/server";
 import type { OrderWithNestedItems } from "@/lib/orders-line-items-flatten";
 
@@ -40,5 +40,5 @@ export default async function OrdersPage() {
 
   const orders = (rows ?? []) as OrderWithNestedItems[];
 
-  return <OrdersLineItemsTable initialOrders={orders} />;
+  return <OrdersAgGrid initialOrders={orders} />;
 }
