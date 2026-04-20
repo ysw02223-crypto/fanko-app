@@ -26,7 +26,13 @@ const FINANCE_NAV: NavItem[] = [
 ];
 
 // ── 메인 SidebarNav ───────────────────────────────────────────────────────
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarNav({
+  onNavigate,
+  collapsed = false,
+}: {
+  onNavigate?: () => void;
+  collapsed?: boolean;
+}) {
   const pathname = usePathname();
 
   function isActive(href: string): boolean {
@@ -37,6 +43,23 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       );
     }
     return pathname === href || pathname.startsWith(href + "/");
+  }
+
+  // 접힌 상태: 아이콘만 세로로 나열
+  if (collapsed) {
+    return (
+      <div className="flex flex-col gap-0.5 py-2">
+        {[...ORDER_NAV, ...FINANCE_NAV].map((item) => (
+          <NavItemRow
+            key={item.href}
+            item={item}
+            active={isActive(item.href)}
+            onNavigate={onNavigate}
+            collapsed
+          />
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -89,17 +112,43 @@ function NavItemRow({
   item,
   active,
   onNavigate,
+  collapsed = false,
 }: {
   item: NavItem;
   active: boolean;
   onNavigate?: () => void;
+  collapsed?: boolean;
 }) {
   if (item.disabled) {
     return (
-      <span className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-600 opacity-40 select-none">
+      <span
+        title={collapsed ? item.label : undefined}
+        className={
+          collapsed
+            ? "flex h-9 cursor-not-allowed items-center justify-center opacity-30 select-none"
+            : "flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-600 opacity-40 select-none"
+        }
+      >
         <span className="shrink-0">{item.icon}</span>
-        {item.label}
+        {!collapsed && item.label}
       </span>
+    );
+  }
+
+  if (collapsed) {
+    return (
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        title={item.label}
+        className={`mx-1.5 flex h-9 items-center justify-center rounded-lg transition-colors ${
+          active
+            ? "bg-violet-900/50 text-violet-300"
+            : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+        }`}
+      >
+        <span className="shrink-0">{item.icon}</span>
+      </Link>
     );
   }
 
