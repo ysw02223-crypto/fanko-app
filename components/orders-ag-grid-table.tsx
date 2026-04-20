@@ -877,7 +877,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             getRowStyle={getRowStyle}
             onCellValueChanged={handleCellValueChanged}
             onCellFocused={handleCellFocused}
-            suppressClickEdit={isMobile}
+            suppressClickEdit={false}
             undoRedoCellEditing={true}
             undoRedoCellEditingLimit={30}
             enableCellTextSelection={true}
@@ -887,16 +887,6 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
           />
         </div>
       </div>
-
-      {/* ── 모바일 FormulaBar (portal fixed bottom) ──────────────────────── */}
-      {isMobile && (
-        <FormulaBar
-          cell={focusedCell}
-          isMobile={true}
-          onSave={handleFormulaSave}
-          onCancel={() => setFocusedCell(null)}
-        />
-      )}
     </>
   );
 }
