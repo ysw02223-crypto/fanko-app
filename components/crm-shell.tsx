@@ -25,13 +25,12 @@ export function CrmShell({
         />
       )}
 
-      {/* ── 좌측 사이드바 (240px) ────────────────────────────────────────── */}
+      {/* ── 좌측 사이드바 (240px, 모든 화면에서 overlay) ─────────────────── */}
       <aside
         className={[
           "fixed inset-y-0 left-0 z-50 flex w-60 flex-col",
           "border-r border-slate-800 bg-slate-900",
           "transition-transform duration-200 ease-in-out",
-          "lg:static lg:translate-x-0 lg:z-auto",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
@@ -72,8 +71,8 @@ export function CrmShell({
 
       {/* ── 오른쪽 메인 영역 ─────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col bg-zinc-50 dark:bg-zinc-950">
-        {/* 모바일 전용 topbar (lg 이상에서는 숨김) */}
-        <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-zinc-200 bg-white px-4 lg:hidden dark:border-zinc-800 dark:bg-zinc-900">
+        {/* 상단 topbar (모든 화면에서 표시) */}
+        <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-900">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
