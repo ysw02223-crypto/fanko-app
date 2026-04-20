@@ -1,13 +1,31 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
-import type { OrderForShipping } from "@/lib/actions/shipping";
-import { toggleDownloadedAction } from "@/lib/actions/shipping";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgGridReact } from "ag-grid-react";
+import {
+  ModuleRegistry,
+  AllCommunityModule,
+  themeQuartz,
+  type ColDef,
+  type CellStyle,
+  type ValueFormatterParams,
+  type ICellRendererParams,
+  type CellValueChangedEvent,
+  type CellFocusedEvent,
+  type GetRowIdParams,
+  type RowClassParams,
+  type RowStyle,
+} from "ag-grid-community";
 import { createPortal } from "react-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toggleDownloadedAction } from "@/lib/actions/shipping";
+import type { OrderForShipping } from "@/lib/actions/shipping";
 import { useT } from "@/lib/i18n";
 
-// ── 타입 ────────────────────────────────────────────────────────────────────────
+// ── AG Grid 모듈 등록 ─────────────────────────────────────────────────────
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+// ── 타입 ──────────────────────────────────────────────────────────────────
 
 type ShippingEditableField =
   | "recipient_name"
@@ -19,38 +37,47 @@ type ShippingEditableField =
   | "address"
   | "customs_number";
 
-type EditTarget = {
-  orderNum: string;
-  field: ShippingEditableField;
+type ShippingGridRow = {
+  order_num: string;
+  date: string;
+  progress: string | null;
+  product_names: string;
+  downloaded: boolean;
+  recipient_name: string;
+  recipient_phone: string;
+  recipient_email: string;
+  zip_code: string;
+  region: string;
+  city: string;
+  address: string;
+  customs_number: string;
 };
 
 type HistoryEntry = {
   id: string;
   at: number;
   orderNum: string;
-  field: string;
+  field: ShippingEditableField;
   columnLabel: string;
   oldDisplay: string;
   newDisplay: string;
   revert: () => Promise<void>;
 };
 
-type FillDragState = {
-  startRowIdx: number;
+type ShippingFocusedCell = {
+  orderNum: string;
   field: ShippingEditableField;
-  value: string;
+  label: string;
+  currentValue: string;
 };
 
-type ShippingOrder = OrderForShipping;
-
-export type ShippingTableProps = {
-  initialOrders: ShippingOrder[];
+type GridContext = {
+  onDownloadToggle: (orderNum: string, checked: boolean) => void;
 };
 
-// ── 상수 ────────────────────────────────────────────────────────────────────────
+// ── 상수 ──────────────────────────────────────────────────────────────────
 
-
-const EDITABLE_FIELDS: ShippingEditableField[] = [
+const SHIPPING_EDITABLE_FIELDS: ShippingEditableField[] = [
   "recipient_name",
   "recipient_phone",
   "recipient_email",
@@ -61,56 +88,72 @@ const EDITABLE_FIELDS: ShippingEditableField[] = [
   "customs_number",
 ];
 
-const CLICK_SLOP_PX = 5;
-
-// 컬럼 너비 (px)
-const W = {
-  num: 24,
-  order_num: 80,
-  date: 64,
-  product_names: 280,
-  downloaded: 48,
-  recipient_name: 180,
-  recipient_phone: 90,
-  recipient_email: 180,
-  zip_code: 80,
-  region: 130,
-  city: 130,
-  address: 200,
-  customs_number: 110,
-} as const;
-
-const TOTAL_MIN_WIDTH =
-  W.num + W.order_num + W.date + W.product_names + W.downloaded +
-  W.recipient_name + W.recipient_phone + W.recipient_email + W.zip_code +
-  W.region + W.city + W.address + W.customs_number;
-
-// ── CSS 클래스 ──────────────────────────────────────────────────────────────────
-
-const thClass =
-  "whitespace-nowrap border-b-2 border-r border-zinc-300 bg-zinc-50 px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
-const tdBase =
-  "border-b border-r border-zinc-200 px-2 py-1 align-middle text-sm dark:border-zinc-700 overflow-hidden";
-const cellBtn =
-  "w-full cursor-pointer rounded px-1 py-0.5 text-left transition hover:bg-black/5 dark:hover:bg-white/10 min-h-[28px] flex items-center truncate";
-const editingBg = "bg-sky-100 dark:bg-sky-950/50";
-
-// ── 헬퍼 ────────────────────────────────────────────────────────────────────────
-
 const SHIPPING_SELECT =
   "order_num, recipient_name, recipient_phone, recipient_email, zip_code, region, city, address, customs_number, downloaded";
 
-async function fetchShippingOrders(): Promise<ShippingOrder[]> {
+// ── 테마 ──────────────────────────────────────────────────────────────────
+
+const fankoTheme = themeQuartz.withParams({
+  accentColor: "#059669",
+  rowHeight: 36,
+  headerHeight: 38,
+  fontFamily: "inherit",
+  fontSize: "13px",
+  borderColor: "#e4e4e7",
+  headerBackgroundColor: "#fafafa",
+  rowHoverColor: "rgba(0,0,0,0.03)",
+  selectedRowBackgroundColor: "rgba(5, 150, 105, 0.08)",
+  cellHorizontalPaddingScale: 0.6,
+});
+
+// ── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+function isComplete(row: ShippingGridRow): boolean {
+  return SHIPPING_EDITABLE_FIELDS.every((f) => !!row[f]?.trim());
+}
+
+function hasAnyData(row: ShippingGridRow): boolean {
+  return SHIPPING_EDITABLE_FIELDS.some((f) => !!row[f]?.trim());
+}
+
+function formatDate(dateStr: string): string {
+  const parts = dateStr.split("-");
+  if (parts.length === 3) return `${parts[1]}/${parts[2]}`;
+  return dateStr;
+}
+
+function displayVal(val: string | null): string {
+  return val?.trim() ? val.trim() : "—";
+}
+
+function toShippingGridRow(order: OrderForShipping): ShippingGridRow {
+  return {
+    order_num: order.order_num,
+    date: order.date,
+    progress: order.progress,
+    product_names: order.product_names,
+    downloaded: order.shipping?.downloaded ?? false,
+    recipient_name: order.shipping?.recipient_name ?? "",
+    recipient_phone: order.shipping?.recipient_phone ?? "",
+    recipient_email: order.shipping?.recipient_email ?? "",
+    zip_code: order.shipping?.zip_code ?? "",
+    region: order.shipping?.region ?? "",
+    city: order.shipping?.city ?? "",
+    address: order.shipping?.address ?? "",
+    customs_number: order.shipping?.customs_number ?? "",
+  };
+}
+
+async function fetchAllShippingOrders(): Promise<OrderForShipping[]> {
   const supabase = createClient();
   const [ordersRes, itemsRes, shippingRes] = await Promise.all([
     supabase
       .from("orders")
-      .select("order_num, date, customer_name, progress")
+      .select("order_num, date, progress")
       .order("date", { ascending: false }),
     supabase.from("order_items").select("order_num, product_name"),
     supabase.from("shipping_info").select(SHIPPING_SELECT),
   ]);
-
   if (ordersRes.error) throw new Error(ordersRes.error.message);
   if (itemsRes.error) throw new Error(itemsRes.error.message);
   if (shippingRes.error) throw new Error(shippingRes.error.message);
@@ -121,117 +164,141 @@ async function fetchShippingOrders(): Promise<ShippingOrder[]> {
     arr.push(item.product_name);
     itemsByOrder.set(item.order_num, arr);
   }
-
   const shippingByOrder = new Map<string, OrderForShipping["shipping"]>();
   for (const row of shippingRes.data ?? []) {
     shippingByOrder.set(row.order_num, row as OrderForShipping["shipping"]);
   }
-
   return (ordersRes.data ?? []).map((o) => ({
     order_num: o.order_num,
     date: o.date,
-    customer_name: o.customer_name,
-    progress: o.progress,
+    progress: o.progress ?? null,
     product_names: (itemsByOrder.get(o.order_num) ?? []).join("\n"),
     shipping: shippingByOrder.get(o.order_num) ?? null,
   }));
 }
 
-const REQUIRED_SHIPPING_FIELDS: ShippingEditableField[] = [
-  "recipient_name", "recipient_phone", "recipient_email",
-  "zip_code", "region", "city", "address", "customs_number",
-];
+// ── 셀 렌더러: 다운로드 체크박스 ─────────────────────────────────────────
 
-function isComplete(order: ShippingOrder): boolean {
-  const s = order.shipping;
-  if (!s) return false;
-  return REQUIRED_SHIPPING_FIELDS.every((f) => !!s[f]?.trim());
+function DownloadedRenderer(
+  params: ICellRendererParams<ShippingGridRow, boolean>,
+) {
+  const ctx = params.context as GridContext;
+  const row = params.data;
+  if (!row) return null;
+  return (
+    <div className="flex h-full items-center justify-center">
+      <input
+        type="checkbox"
+        checked={row.progress === "IN DELIVERY"}
+        onChange={(e) => ctx.onDownloadToggle(row.order_num, e.target.checked)}
+        className="h-4 w-4 cursor-pointer accent-blue-600"
+      />
+    </div>
+  );
 }
 
-function hasAnyData(shipping: ShippingOrder["shipping"]): boolean {
-  if (!shipping) return false;
-  return REQUIRED_SHIPPING_FIELDS.some((f) => !!shipping[f]?.trim());
+// ── 셀 렌더러: 상품명 ─────────────────────────────────────────────────────
+
+function ProductNamesRenderer({
+  value,
+}: ValueFormatterParams<ShippingGridRow, string>) {
+  if (!value) return <span className="text-zinc-400">—</span>;
+  const names = (value as string).split("\n");
+  return (
+    <div className="flex flex-col justify-center gap-0.5 py-0.5">
+      {names.map((name, i) => (
+        <span
+          key={i}
+          className="truncate text-xs leading-tight text-zinc-600 dark:text-zinc-400"
+        >
+          {name}
+        </span>
+      ))}
+    </div>
+  );
 }
 
-function isMissingField(shipping: ShippingOrder["shipping"], field: ShippingEditableField): boolean {
-  if (!shipping) return false;
-  return hasAnyData(shipping) && !shipping[field]?.trim();
+// ── 통계 카드 ─────────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div
+      className={`flex min-w-[80px] flex-col gap-0.5 rounded-lg px-3 py-2 ${color}`}
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wide opacity-60">
+        {label}
+      </span>
+      <span className="text-xl font-bold leading-tight">{value}</span>
+    </div>
+  );
 }
 
-function displayVal(val: string | null | undefined): string {
-  return val?.trim() ? val.trim() : "—";
-}
+// ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 
-// "2026-04-03" → "04/03"
-function formatDate(dateStr: string): string {
-  const parts = dateStr.split("-");
-  if (parts.length === 3) return `${parts[1]}/${parts[2]}`;
-  return dateStr;
-}
-
-// ── 메인 컴포넌트 ───────────────────────────────────────────────────────────────
+export type ShippingTableProps = {
+  initialOrders: OrderForShipping[];
+};
 
 export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const t = useT();
-  const fieldLabels: Record<ShippingEditableField, string> = {
-    recipient_name: t.ship_col_recipient,
-    recipient_phone: t.ship_col_phone,
-    recipient_email: t.ship_col_email,
-    zip_code: t.ship_col_zip,
-    region: t.ship_col_region,
-    city: t.ship_col_city,
-    address: t.ship_col_address,
-    customs_number: t.ship_col_customs,
-  };
-  const [orders, setOrders] = useState<ShippingOrder[]>(initialOrders);
-  const [editing, setEditing] = useState<EditTarget | null>(null);
-  const [focusedCell, setFocusedCell] = useState<EditTarget | null>(null);
-  const [draft, setDraft] = useState("");
-  const [editBaseline, setEditBaseline] = useState("");
+
+  const FIELD_LABELS = useMemo<Record<ShippingEditableField, string>>(
+    () => ({
+      recipient_name: t.ship_col_recipient,
+      recipient_phone: t.ship_col_phone,
+      recipient_email: t.ship_col_email,
+      zip_code: t.ship_col_zip,
+      region: t.ship_col_region,
+      city: t.ship_col_city,
+      address: t.ship_col_address,
+      customs_number: t.ship_col_customs,
+    }),
+    [t],
+  );
+
+  const [rows, setRows] = useState<ShippingGridRow[]>(() =>
+    initialOrders.map(toShippingGridRow),
+  );
   const [toast, setToast] = useState<string | null>(null);
   const [toastType, setToastType] = useState<"error" | "success">("error");
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [undoingId, setUndoingId] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "done" | "todo">("");
   const [openFilter, setOpenFilter] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [focusedCell, setFocusedCell] = useState<ShippingFocusedCell | null>(null);
+  const [formulaDraft, setFormulaDraft] = useState("");
+  const [formulaDirty, setFormulaDirty] = useState(false);
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
 
-  const tableRef = useRef<HTMLDivElement>(null);
-  const headerTableRef = useRef<HTMLTableElement>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const suppressNextClickRef = useRef(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const barInputRef = useRef<HTMLInputElement>(null);
+  const gridRef = useRef<AgGridReact<ShippingGridRow>>(null);
   const savingRef = useRef(false);
-  const togglingRef = useRef(false);
+  const togglingRef = useRef<Set<string>>(new Set());
 
-  // Blur-safe 저장을 위한 ref (stale closure 방지)
-  const editingRef = useRef<EditTarget | null>(null);
-  const draftRef = useRef<string>("");
-  const editBaselineRef = useRef<string>("");
-
-  // Fill drag state
-  const [fillDrag, setFillDrag] = useState<FillDragState | null>(null);
-  const [fillPreview, setFillPreview] = useState<{ startIdx: number; endIdx: number } | null>(null);
-  const fillDragRef = useRef<FillDragState | null>(null);
-  const fillPreviewRef = useRef<{ startIdx: number; endIdx: number } | null>(null);
-  // filteredOrders를 ref로 유지 (batchFillShipping 클로저에서 최신값 참조)
-  const filteredOrdersRef = useRef<ShippingOrder[]>([]);
-
-  // ── 초기화 effects ──────────────────────────────────────────────────────────
+  // ── 초기화 ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
     setPortalEl(document.getElementById("crm-subheader-portal"));
   }, []);
 
   useEffect(() => {
+    setRows(initialOrders.map(toShippingGridRow));
+  }, [initialOrders]);
+
+  useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setToast(null), 4500);
+    return () => clearTimeout(timer);
   }, [toast]);
 
   useEffect(() => {
@@ -244,223 +311,43 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // 테이블 외부 클릭 시 focusedCell 닫힘 + 미저장 편집 flush
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        const outgoing = editingRef.current;
-        if (outgoing !== null && draftRef.current !== editBaselineRef.current) {
-          void saveFieldRef.current(outgoing.orderNum, outgoing.field, draftRef.current, editBaselineRef.current);
-        }
-        editingRef.current = null;
-        setFocusedCell(null);
-        setEditing(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  // ── 재로드 ───────────────────────────────────────────────────────────────
 
-  // ── 드래그/터치 스크롤 ──────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const el = tableRef.current;
-    if (!el) return;
-
-    let isDown = false;
-    let startX = 0;
-    let scrollLeft0 = 0;
-    let startMouseX = 0;
-    let startMouseY = 0;
-    let touchStartX = 0;
-    let touchScrollLeft = 0;
-    let touchOriginX = 0;
-    let touchOriginY = 0;
-    let touchSession = false;
-
-    const blocksScrollDragStart = (target: EventTarget | null) => {
-      const t = target as HTMLElement | null;
-      if (!t) return false;
-      return Boolean(t.closest("input, select, textarea, [data-fill-handle]"));
-    };
-
-    const onMouseDown = (e: MouseEvent) => {
-      if (blocksScrollDragStart(e.target)) return;
-      isDown = true;
-      el.style.cursor = "grabbing";
-      startMouseX = e.clientX;
-      startMouseY = e.clientY;
-      startX = e.pageX - el.offsetLeft;
-      scrollLeft0 = el.scrollLeft;
-    };
-    const onMouseLeave = () => { isDown = false; el.style.cursor = "grab"; };
-    const finishMouse = (e: MouseEvent) => {
-      if (isDown) {
-        const d = Math.hypot(e.clientX - startMouseX, e.clientY - startMouseY);
-        if (d >= CLICK_SLOP_PX) suppressNextClickRef.current = true;
-      }
-      isDown = false;
-      el.style.cursor = "grab";
-    };
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDown) return;
-      e.preventDefault();
-      const x = e.pageX - el.offsetLeft;
-      el.scrollLeft = scrollLeft0 - (x - startX) * 1.5;
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (blocksScrollDragStart(e.target)) { touchSession = false; return; }
-      touchSession = true;
-      touchOriginX = e.touches[0].clientX;
-      touchOriginY = e.touches[0].clientY;
-      touchStartX = e.touches[0].pageX - el.offsetLeft;
-      touchScrollLeft = el.scrollLeft;
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (!touchSession) return;
-      el.scrollLeft = touchScrollLeft - (e.touches[0].pageX - el.offsetLeft - touchStartX) * 1.5;
-    };
-    const onTouchEnd = (e: TouchEvent) => {
-      if (!touchSession) return;
-      touchSession = false;
-      const t = e.changedTouches[0];
-      if (Math.hypot(t.clientX - touchOriginX, t.clientY - touchOriginY) >= CLICK_SLOP_PX) {
-        suppressNextClickRef.current = true;
-      }
-    };
-
-    const onDocMouseUp = (e: MouseEvent) => { if (isDown) finishMouse(e); };
-    const onClickCapture = (e: MouseEvent) => {
-      if (!suppressNextClickRef.current) return;
-      e.preventDefault(); e.stopPropagation();
-      suppressNextClickRef.current = false;
-    };
-
-    el.style.cursor = "grab";
-    el.addEventListener("mousedown", onMouseDown);
-    el.addEventListener("mouseleave", onMouseLeave);
-    el.addEventListener("mouseup", finishMouse);
-    el.addEventListener("mousemove", onMouseMove);
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: true });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    el.addEventListener("click", onClickCapture, true);
-    document.addEventListener("mouseup", onDocMouseUp);
-
-    return () => {
-      document.removeEventListener("mouseup", onDocMouseUp);
-      el.removeEventListener("mousedown", onMouseDown);
-      el.removeEventListener("mouseleave", onMouseLeave);
-      el.removeEventListener("mouseup", finishMouse);
-      el.removeEventListener("mousemove", onMouseMove);
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-      el.removeEventListener("click", onClickCapture, true);
-    };
-  }, []);
-
-  // ── 헤더-바디 수평 스크롤 동기화 ────────────────────────────────────────────
-
-  useEffect(() => {
-    const bodyEl = tableRef.current;
-    const headerTbl = headerTableRef.current;
-    if (!bodyEl || !headerTbl) return;
-    const onScroll = () => {
-      headerTbl.style.transform = `translateX(-${bodyEl.scrollLeft}px)`;
-    };
-    onScroll();
-    bodyEl.addEventListener("scroll", onScroll);
-    return () => bodyEl.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // ── 편집 포커스 ─────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!editing) return;
-    const id = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select?.();
-    });
-    return () => cancelAnimationFrame(id);
-  }, [editing]);
-
-  // ── 데이터 헬퍼 ─────────────────────────────────────────────────────────────
-
-  const showError = useCallback((msg: string) => {
-    setToastType("error");
-    setToast(msg);
-  }, []);
-
-  // 드래그 채우기 중 커서/선택 잠금
-  useEffect(() => {
-    if (fillDrag) {
-      document.body.style.cursor = "crosshair";
-      document.body.style.userSelect = "none";
-    } else {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    }
-    return () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-  }, [fillDrag]);
-
-  const refetchOrders = useCallback(async () => {
+  const refetch = useCallback(async () => {
     try {
-      const fresh = await fetchShippingOrders();
-      setOrders(fresh);
+      const fresh = await fetchAllShippingOrders();
+      setRows(fresh.map(toShippingGridRow));
     } catch {
-      showError("목록 새로고침 실패");
+      setToastType("error");
+      setToast("목록 새로고침 실패");
     }
-  }, [showError]);
-
-  const pushHistory = useCallback((entry: Omit<HistoryEntry, "id" | "at">) => {
-    setHistory((h) => {
-      const newEntry = { id: crypto.randomUUID(), at: Date.now(), ...entry };
-      if (
-        h.length > 0 &&
-        h[0].field === entry.field &&
-        h[0].orderNum === entry.orderNum &&
-        entry.newDisplay === h[0].oldDisplay
-      ) {
-        return h.slice(1);
-      }
-      return [newEntry, ...h].slice(0, 30);
-    });
   }, []);
 
-  // ── 저장 ────────────────────────────────────────────────────────────────────
+  // ── 저장 ─────────────────────────────────────────────────────────────────
 
   const saveField = useCallback(
     async (
-      orderNum: string,
+      rowData: ShippingGridRow,
       field: ShippingEditableField,
       newRaw: string,
       oldRaw: string,
-    ): Promise<boolean> => {
-      if (newRaw === oldRaw) return true;
-      if (savingRef.current) return false;
-
-      const currentOrder = orders.find((o) => o.order_num === orderNum);
-      const currentShipping = currentOrder?.shipping;
+    ): Promise<void> => {
+      if (newRaw === oldRaw) return;
+      if (savingRef.current) return;
 
       const newVal = newRaw.trim() === "" ? null : newRaw.trim();
       const oldVal = oldRaw.trim() === "" ? null : oldRaw.trim();
 
-      // 전체 row를 upsert (다른 필드 보존)
       const payload = {
-        order_num: orderNum,
-        recipient_name: currentShipping?.recipient_name ?? null,
-        recipient_phone: currentShipping?.recipient_phone ?? null,
-        recipient_email: currentShipping?.recipient_email ?? null,
-        zip_code: currentShipping?.zip_code ?? null,
-        region: currentShipping?.region ?? null,
-        city: currentShipping?.city ?? null,
-        address: currentShipping?.address ?? null,
-        customs_number: currentShipping?.customs_number ?? null,
+        order_num: rowData.order_num,
+        recipient_name: rowData.recipient_name || null,
+        recipient_phone: rowData.recipient_phone || null,
+        recipient_email: rowData.recipient_email || null,
+        zip_code: rowData.zip_code || null,
+        region: rowData.region || null,
+        city: rowData.city || null,
+        address: rowData.address || null,
+        customs_number: rowData.customs_number || null,
         [field]: newVal,
         updated_at: new Date().toISOString(),
       };
@@ -473,87 +360,184 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
           .upsert(payload, { onConflict: "order_num" });
 
         if (error) {
-          showError(error.message);
-          return false;
+          setToastType("error");
+          setToast(error.message);
+          return;
         }
 
-        await refetchOrders();
+        await refetch();
 
-        // 되돌리기: 저장 시점의 snapshot 사용
-        const snapshotShipping = { ...currentShipping };
-        pushHistory({
-          orderNum,
-          field,
-          columnLabel: fieldLabels[field],
-          oldDisplay: displayVal(oldVal),
-          newDisplay: displayVal(newVal),
-          revert: async () => {
-            const supa = createClient();
-            const revertPayload = {
-              order_num: orderNum,
-              recipient_name: snapshotShipping?.recipient_name ?? null,
-              recipient_phone: snapshotShipping?.recipient_phone ?? null,
-              recipient_email: snapshotShipping?.recipient_email ?? null,
-              zip_code: snapshotShipping?.zip_code ?? null,
-              region: snapshotShipping?.region ?? null,
-              city: snapshotShipping?.city ?? null,
-              address: snapshotShipping?.address ?? null,
-              customs_number: snapshotShipping?.customs_number ?? null,
-              [field]: oldVal,
-              updated_at: new Date().toISOString(),
-            };
-            const { error: revertErr } = await supa
-              .from("shipping_info")
-              .upsert(revertPayload, { onConflict: "order_num" });
-            if (revertErr) showError(`되돌리기 실패: ${revertErr.message}`);
-            else await refetchOrders();
-          },
+        const snapshotRow = { ...rowData };
+        const newDisplay = displayVal(newVal);
+        const oldDisplay = displayVal(oldVal);
+        const columnLabel = FIELD_LABELS[field];
+
+        setHistory((h) => {
+          const entry: HistoryEntry = {
+            id: crypto.randomUUID(),
+            at: Date.now(),
+            orderNum: rowData.order_num,
+            field,
+            columnLabel,
+            oldDisplay,
+            newDisplay,
+            revert: async () => {
+              const supa = createClient();
+              const revertPayload = {
+                order_num: rowData.order_num,
+                recipient_name: snapshotRow.recipient_name || null,
+                recipient_phone: snapshotRow.recipient_phone || null,
+                recipient_email: snapshotRow.recipient_email || null,
+                zip_code: snapshotRow.zip_code || null,
+                region: snapshotRow.region || null,
+                city: snapshotRow.city || null,
+                address: snapshotRow.address || null,
+                customs_number: snapshotRow.customs_number || null,
+                [field]: oldVal,
+                updated_at: new Date().toISOString(),
+              };
+              const { error: revertErr } = await supa
+                .from("shipping_info")
+                .upsert(revertPayload, { onConflict: "order_num" });
+              if (revertErr) {
+                setToastType("error");
+                setToast(`되돌리기 실패: ${revertErr.message}`);
+              } else {
+                await refetch();
+              }
+            },
+          };
+          if (
+            h.length > 0 &&
+            h[0].field === field &&
+            h[0].orderNum === rowData.order_num &&
+            newDisplay === h[0].oldDisplay
+          ) {
+            return [entry, ...h.slice(1)].slice(0, 30);
+          }
+          return [entry, ...h].slice(0, 30);
         });
-
-        return true;
       } finally {
         savingRef.current = false;
       }
     },
-    [orders, showError, refetchOrders, pushHistory],
+    [refetch, FIELD_LABELS],
   );
 
-  // outside-click useEffect의 [] dep 때문에 saveField 최신값을 ref로 유지
-  const saveFieldRef = useRef(saveField);
-  useEffect(() => { saveFieldRef.current = saveField; }, [saveField]);
+  // ── onCellValueChanged ────────────────────────────────────────────────────
 
-  // ── 다운로드 토글 ────────────────────────────────────────────────────────────
+  const handleCellValueChanged = useCallback(
+    (event: CellValueChangedEvent<ShippingGridRow>) => {
+      const field = event.colDef.field as ShippingEditableField | undefined;
+      if (!field || !SHIPPING_EDITABLE_FIELDS.includes(field)) return;
+      void saveField(
+        event.data,
+        field,
+        String(event.newValue ?? ""),
+        String(event.oldValue ?? ""),
+      );
+    },
+    [saveField],
+  );
 
-  const handleDownloadToggle = useCallback(async (orderNum: string, checked: boolean) => {
-    if (togglingRef.current) return;
-    togglingRef.current = true;
-    // 낙관적 업데이트: progress 반영
-    const newProgress = checked ? "IN DELIVERY" : "PROBLEM";
-    setOrders((prev) =>
-      prev.map((o) => o.order_num === orderNum ? { ...o, progress: newProgress } : o)
-    );
-    try {
-      const result = await toggleDownloadedAction(orderNum, checked);
-      if (result?.error) {
-        setToast(result.error);
-        // 롤백: 낙관적 업데이트 되돌리기
-        setOrders((prev) =>
-          prev.map((o) => o.order_num === orderNum ? { ...o, progress: checked ? "PROBLEM" : "IN DELIVERY" } : o)
-        );
-      } else {
-        if (result?.ok) setToast(result.ok);
-        // refetchOrders() 대신 서버에서 확정된 값으로 상태 업데이트
-        const confirmed = result?.confirmedProgress ?? newProgress;
-        setOrders((prev) =>
-          prev.map((o) => o.order_num === orderNum ? { ...o, progress: confirmed } : o)
-        );
+  // ── onCellFocused → FormulaBar ────────────────────────────────────────────
+
+  const handleCellFocused = useCallback(
+    (event: CellFocusedEvent) => {
+      if (event.rowIndex === null || event.rowIndex === undefined) return;
+      const col = event.column;
+      if (!col || typeof col === "string") {
+        setFocusedCell(null);
+        return;
       }
-    } finally {
-      togglingRef.current = false;
-    }
-  }, []);
+      const api = gridRef.current?.api;
+      if (!api) return;
 
-  // ── 엑셀 다운로드 ────────────────────────────────────────────────────────────
+      const colId = col.getColId() as ShippingEditableField;
+      if (!SHIPPING_EDITABLE_FIELDS.includes(colId)) {
+        setFocusedCell(null);
+        return;
+      }
+
+      const node = api.getDisplayedRowAtIndex(event.rowIndex);
+      if (!node?.data) {
+        setFocusedCell(null);
+        return;
+      }
+
+      const currentValue = String(node.data[colId] ?? "");
+      setFocusedCell({
+        orderNum: node.data.order_num,
+        field: colId,
+        label: FIELD_LABELS[colId],
+        currentValue,
+      });
+      setFormulaDraft(currentValue);
+      setFormulaDirty(false);
+    },
+    [FIELD_LABELS],
+  );
+
+  // ── FormulaBar 저장 ───────────────────────────────────────────────────────
+
+  const handleFormulaSave = useCallback(() => {
+    if (!focusedCell || !formulaDirty) {
+      setFocusedCell(null);
+      return;
+    }
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const rowNode = api.getRowNode(focusedCell.orderNum);
+    if (rowNode) {
+      rowNode.setDataValue(focusedCell.field, formulaDraft);
+    }
+    setFocusedCell(null);
+  }, [focusedCell, formulaDraft, formulaDirty]);
+
+  // ── 다운로드 토글 ─────────────────────────────────────────────────────────
+
+  const handleDownloadToggle = useCallback(
+    async (orderNum: string, checked: boolean) => {
+      if (togglingRef.current.has(orderNum)) return;
+      togglingRef.current.add(orderNum);
+      const newProgress = checked ? "IN DELIVERY" : "PROBLEM";
+      setRows((prev) =>
+        prev.map((r) =>
+          r.order_num === orderNum ? { ...r, progress: newProgress } : r,
+        ),
+      );
+      try {
+        const result = await toggleDownloadedAction(orderNum, checked);
+        if (result?.error) {
+          setToastType("error");
+          setToast(result.error);
+          setRows((prev) =>
+            prev.map((r) =>
+              r.order_num === orderNum
+                ? { ...r, progress: checked ? "PROBLEM" : "IN DELIVERY" }
+                : r,
+            ),
+          );
+        } else {
+          if (result?.ok) {
+            setToastType("success");
+            setToast(result.ok);
+          }
+          const confirmed = result?.confirmedProgress ?? newProgress;
+          setRows((prev) =>
+            prev.map((r) =>
+              r.order_num === orderNum ? { ...r, progress: confirmed } : r,
+            ),
+          );
+        }
+      } finally {
+        togglingRef.current.delete(orderNum);
+      }
+    },
+    [],
+  );
+
+  // ── 엑셀 다운로드 ─────────────────────────────────────────────────────────
 
   const handleExcelDownload = useCallback(async () => {
     if (isDownloading) return;
@@ -561,171 +545,33 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     try {
       const res = await fetch("/shipping/export");
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        setToastType("error");
         setToast(json.error ?? "다운로드 실패");
         return;
       }
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") ?? "";
-      const filename = disposition.split("filename=")[1]?.replace(/"/g, "") ?? "shipping.xlsx";
+      const filename =
+        disposition.split("filename=")[1]?.replace(/"/g, "") ?? "shipping.xlsx";
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      await refetchOrders();
+      await refetch();
     } catch {
+      setToastType("error");
       setToast("다운로드 중 오류가 발생했습니다.");
     } finally {
       setIsDownloading(false);
     }
-  }, [isDownloading, refetchOrders]);
+  }, [isDownloading, refetch]);
 
-  // ── 드래그 채우기 ────────────────────────────────────────────────────────────
-
-  const onFillHandleMouseDown = useCallback(
-    (
-      e: React.MouseEvent,
-      rowIdx: number,
-      field: ShippingEditableField,
-      rawValue: string,
-    ) => {
-      e.preventDefault();
-      e.stopPropagation();
-      // 현재 편집 중인 셀이 fill 소스 셀이라면 draft 값을 사용
-      const cur = editingRef.current;
-      const effectiveValue =
-        cur !== null && cur.field === field ? draftRef.current : rawValue;
-      const state: FillDragState = { startRowIdx: rowIdx, field, value: effectiveValue };
-      fillDragRef.current = state;
-      fillPreviewRef.current = { startIdx: rowIdx, endIdx: rowIdx };
-      setFillDrag(state);
-      setFillPreview({ startIdx: rowIdx, endIdx: rowIdx });
-    },
-    [],
-  );
-
-  const batchFillShipping = useCallback(
-    async (drag: FillDragState, startIdx: number, endIdx: number) => {
-      const supabase = createClient();
-      const rowsToFill = filteredOrdersRef.current.slice(startIdx, endIdx + 1);
-      const targets = rowsToFill.filter((_, i) => startIdx + i !== drag.startRowIdx);
-      if (targets.length === 0) return;
-
-      let successCount = 0;
-      const newVal = drag.value.trim() === "" ? null : drag.value.trim();
-
-      for (const order of targets) {
-        const currentShipping = order.shipping;
-        const payload = {
-          order_num: order.order_num,
-          recipient_name: currentShipping?.recipient_name ?? null,
-          recipient_phone: currentShipping?.recipient_phone ?? null,
-          recipient_email: currentShipping?.recipient_email ?? null,
-          zip_code: currentShipping?.zip_code ?? null,
-          region: currentShipping?.region ?? null,
-          city: currentShipping?.city ?? null,
-          address: currentShipping?.address ?? null,
-          customs_number: currentShipping?.customs_number ?? null,
-          [drag.field]: newVal,
-          updated_at: new Date().toISOString(),
-        };
-        const { error } = await supabase
-          .from("shipping_info")
-          .upsert(payload, { onConflict: "order_num" });
-        if (!error) successCount++;
-      }
-
-      const fresh = await fetchShippingOrders();
-      setOrders(fresh);
-      setToastType("success");
-      setToast(`${successCount}개 행에 값이 채워졌습니다.`);
-    },
-    [],
-  );
-
-  // 드래그 채우기 글로벌 이벤트
-  useEffect(() => {
-    if (!fillDrag) return;
-
-    const onMouseMove = (e: MouseEvent) => {
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      const tr = el?.closest("[data-row-idx]") as HTMLElement | null;
-      if (!tr) return;
-      const idx = Number(tr.dataset.rowIdx);
-      if (!Number.isFinite(idx)) return;
-      const start = Math.min(fillDragRef.current!.startRowIdx, idx);
-      const end = Math.max(fillDragRef.current!.startRowIdx, idx);
-      fillPreviewRef.current = { startIdx: start, endIdx: end };
-      setFillPreview({ startIdx: start, endIdx: end });
-    };
-
-    const onMouseUp = () => {
-      const drag = fillDragRef.current;
-      const preview = fillPreviewRef.current;
-      fillDragRef.current = null;
-      fillPreviewRef.current = null;
-      setFillDrag(null);
-      setFillPreview(null);
-      if (!drag || !preview || preview.startIdx === preview.endIdx) return;
-      void batchFillShipping(drag, preview.startIdx, preview.endIdx);
-    };
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        fillDragRef.current = null;
-        fillPreviewRef.current = null;
-        setFillDrag(null);
-        setFillPreview(null);
-      }
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [fillDrag, batchFillShipping]);
-
-  // ── 편집 헬퍼 ───────────────────────────────────────────────────────────────
-
-  const startEdit = (orderNum: string, field: ShippingEditableField, current: string) => {
-    // 이전 편집이 아직 저장 안 됐으면 flush
-    const outgoing = editingRef.current;
-    if (outgoing !== null && draftRef.current !== editBaselineRef.current) {
-      void saveFieldRef.current(outgoing.orderNum, outgoing.field, draftRef.current, editBaselineRef.current);
-    }
-    editingRef.current = { orderNum, field };
-    editBaselineRef.current = current;
-    draftRef.current = current;
-    setEditing({ orderNum, field });
-    setFocusedCell({ orderNum, field });
-    setDraft(current);
-    setEditBaseline(current);
-  };
-
-  const cancelEdit = () => {
-    editingRef.current = null;
-    setEditing(null);
-  }; // focusedCell 유지
-
-  const finishEdit = async (orderNum: string, field: ShippingEditableField) => {
-    if (editing?.orderNum !== orderNum || editing?.field !== field) return;
-    const ok = await saveField(orderNum, field, draft, editBaseline);
-    if (ok) {
-      editingRef.current = null;
-      setEditing(null); // focusedCell 유지
-    }
-  };
-
-  const isEditing = (orderNum: string, field: ShippingEditableField) =>
-    editing?.orderNum === orderNum && editing?.field === field;
-
-  // ── Ctrl+Z ──────────────────────────────────────────────────────────────────
+  // ── Ctrl+Z ────────────────────────────────────────────────────────────────
 
   const onHistoryUndo = useCallback(
     async (entry: HistoryEntry) => {
@@ -750,69 +596,169 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history, undoingId]);
+  }, [history, undoingId, onHistoryUndo]);
 
-  // ── 필터링 ──────────────────────────────────────────────────────────────────
+  // ── 필터링된 rowData ──────────────────────────────────────────────────────
 
-  const filteredOrders = useMemo(() => {
+  const rowData = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const isSearching = q.length > 0;
-    return orders.filter((o) => {
-      // 검색 중이 아닐 때만 DONE 숨김
-      if (!isSearching && o.progress === "DONE") return false;
-      if (statusFilter === "done" && !isComplete(o)) return false;
-      if (statusFilter === "todo" && isComplete(o)) return false;
-      if (q) {
-        if (!o.order_num.toLowerCase().includes(q)) return false;
-      }
+    return rows.filter((r) => {
+      if (!q && r.progress === "DONE") return false;
+      if (statusFilter === "done" && !isComplete(r)) return false;
+      if (statusFilter === "todo" && isComplete(r)) return false;
+      if (q && !r.order_num.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [orders, statusFilter, searchQuery]);
+  }, [rows, searchQuery, statusFilter]);
 
-  const shippingDoneCount = useMemo(() => orders.filter(isComplete).length, [orders]);
-  const shippingTodoCount = orders.length - shippingDoneCount;
-  const ordersDoneCount = useMemo(
-    () => orders.filter((o) => o.progress === "DONE").length,
-    [orders],
+  // ── 통계 ─────────────────────────────────────────────────────────────────
+
+  const stats = useMemo(() => {
+    const done = rows.filter(isComplete).length;
+    const todo = rows.filter((r) => !isComplete(r)).length;
+    const inDelivery = rows.filter((r) => r.progress === "IN DELIVERY").length;
+    return { done, todo, inDelivery, total: rows.length };
+  }, [rows]);
+
+  // ── 컬럼 정의 ─────────────────────────────────────────────────────────────
+
+  const colDefs = useMemo<ColDef<ShippingGridRow>[]>(() => {
+    const missingStyle =
+      (field: ShippingEditableField) =>
+      (params: { data?: ShippingGridRow }) => {
+        const row = params.data;
+        if (!row || !hasAnyData(row)) return null;
+        if (!row[field]?.trim())
+          return {
+            backgroundColor: "#fffbeb",
+            borderLeft: "2px solid #f59e0b",
+          };
+        return null;
+      };
+
+    const editableCol = (
+      field: ShippingEditableField,
+      width: number,
+    ): ColDef<ShippingGridRow> => ({
+      field,
+      headerName: FIELD_LABELS[field],
+      width,
+      editable: true,
+      cellEditor: "agTextCellEditor",
+      cellStyle: missingStyle(field),
+      valueFormatter: ({ value }: ValueFormatterParams<ShippingGridRow, string>) =>
+        value ?? "",
+    });
+
+    return [
+      {
+        headerName: "#",
+        width: 44,
+        editable: false,
+        sortable: false,
+        valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
+        cellStyle: {
+          textAlign: "center",
+          color: "#a1a1aa",
+          fontSize: "11px",
+        } as CellStyle,
+      },
+      {
+        field: "order_num",
+        headerName: t.col_order_num,
+        width: 100,
+        pinned: "left" as const,
+        editable: false,
+        cellStyle: { fontFamily: "monospace", fontSize: "12px", fontWeight: 600 } as CellStyle,
+      },
+      {
+        field: "date",
+        headerName: t.col_date,
+        width: 70,
+        editable: false,
+        valueFormatter: ({ value }: ValueFormatterParams<ShippingGridRow, string>) =>
+          formatDate(value ?? ""),
+        cellStyle: {
+          textAlign: "center",
+          color: "#71717a",
+          fontSize: "11px",
+        } as CellStyle,
+      },
+      {
+        field: "product_names",
+        headerName: t.col_product_name,
+        flex: 1,
+        minWidth: 180,
+        editable: false,
+        cellRenderer: ProductNamesRenderer,
+        tooltipField: "product_names",
+      },
+      {
+        field: "downloaded",
+        headerName: t.ship_col_down,
+        width: 52,
+        editable: false,
+        cellRenderer: DownloadedRenderer,
+        cellStyle: {
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+        },
+      },
+      editableCol("recipient_name", 160),
+      editableCol("recipient_phone", 105),
+      editableCol("recipient_email", 185),
+      editableCol("zip_code", 85),
+      editableCol("region", 120),
+      editableCol("city", 120),
+      editableCol("address", 200),
+      editableCol("customs_number", 110),
+    ];
+  }, [FIELD_LABELS, t]);
+
+  // ── getRowStyle ───────────────────────────────────────────────────────────
+
+  const getRowStyle = useCallback(
+    (params: RowClassParams<ShippingGridRow>): RowStyle | undefined => {
+      const row = params.data;
+      if (!row) return undefined;
+      if (row.downloaded) return { backgroundColor: "#eff6ff" };
+      if (isComplete(row)) return { backgroundColor: "#f0fdf4" };
+      if (row.progress === "DONE") return { backgroundColor: "#ffffff", opacity: "0.5" };
+      return undefined;
+    },
+    [],
   );
 
-  // filteredOrdersRef 동기화
-  filteredOrdersRef.current = filteredOrders;
+  // ── context / getRowId / defaultColDef ───────────────────────────────────
 
-  /** 드래그 채우기 하이라이트 여부 */
-  const isFillHighlight = (rowIdx: number, field: ShippingEditableField) =>
-    fillPreview !== null &&
-    fillDrag?.field === field &&
-    rowIdx >= fillPreview.startIdx &&
-    rowIdx <= fillPreview.endIdx;
-
-  /** fill handle span */
-  const FillHandle = ({
-    rowIdx,
-    field,
-    rawValue,
-  }: {
-    rowIdx: number;
-    field: ShippingEditableField;
-    rawValue: string;
-  }) => (
-    <span
-      data-fill-handle="true"
-      onMouseDown={(e) => onFillHandleMouseDown(e, rowIdx, field, rawValue)}
-      className="absolute bottom-0 right-0 z-20 h-2.5 w-2.5 cursor-crosshair border border-white bg-blue-500 dark:border-zinc-900 dark:bg-blue-400"
-    />
+  const gridContext = useMemo<GridContext>(
+    () => ({ onDownloadToggle: handleDownloadToggle }),
+    [handleDownloadToggle],
   );
 
-  // ── 렌더 ────────────────────────────────────────────────────────────────────
+  const getRowId = useCallback(
+    (params: GetRowIdParams<ShippingGridRow>) => params.data.order_num,
+    [],
+  );
+
+  const defaultColDef = useMemo<ColDef<ShippingGridRow>>(
+    () => ({ sortable: true, resizable: true, suppressMovable: false }),
+    [],
+  );
+
+  // ── JSX ───────────────────────────────────────────────────────────────────
 
   return (
     <>
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed bottom-4 right-4 z-[100] max-w-md rounded-lg px-4 py-3 text-sm text-white shadow-lg ${toastType === "success" ? "bg-emerald-600" : "bg-red-600"}`}
-          role="alert"
+          className={`fixed bottom-4 left-1/2 z-[200] -translate-x-1/2 rounded-xl px-4 py-2.5 text-sm font-medium shadow-lg ${
+            toastType === "error"
+              ? "bg-red-600 text-white"
+              : "bg-emerald-600 text-white"
+          }`}
         >
           {toast}
         </div>
@@ -820,10 +766,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
 
       {/* 변경 이력 패널 */}
       {historyOpen && (
-        <div
-          className="fixed inset-0 z-[105] flex justify-end bg-black/30"
-          role="presentation"
-        >
+        <div className="fixed inset-0 z-[105] flex justify-end bg-black/30">
           <button
             type="button"
             className="h-full flex-1 cursor-default"
@@ -844,9 +787,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3">
-              <p className="mb-2 text-xs text-gray-400">
-                {t.history_panel_hint}
-              </p>
+              <p className="mb-2 text-xs text-gray-400">{t.history_panel_hint}</p>
               {history.length === 0 ? (
                 <p className="text-sm text-zinc-500">{t.state_no_changes}</p>
               ) : (
@@ -863,8 +804,8 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                         })}
                       </p>
                       <p className="mt-1 text-zinc-800 dark:text-zinc-200">
-                        {t.col_order_num} {e.orderNum} · {e.columnLabel} · {e.oldDisplay} →{" "}
-                        {e.newDisplay}
+                        {t.col_order_num} {e.orderNum} · {e.columnLabel} ·{" "}
+                        {e.oldDisplay} → {e.newDisplay}
                       </p>
                       <button
                         type="button"
@@ -883,365 +824,209 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
         </div>
       )}
 
-      {/* 변경 이력 버튼 */}
+      {/* 이력 버튼 */}
       <button
         type="button"
         className="fixed bottom-20 right-4 z-[90] rounded-full border border-zinc-300 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-md hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
         onClick={() => setHistoryOpen(true)}
       >
-        {t.btn_history}{history.length > 0 ? ` (${history.length})` : ""}
+        {t.btn_history}
+        {history.length > 0 ? ` (${history.length})` : ""}
       </button>
 
-      {/* 필터 바 — crm-subheader-portal */}
+      {/* 통계 카드 + 필터바 → portal */}
       {portalEl &&
         createPortal(
-          <div className="w-full border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="flex flex-wrap items-center gap-2">
-              {/* 작성 상태 필터 드롭다운 */}
-              <div className="relative" data-filter-dropdown>
-                <button
-                  type="button"
-                  onClick={() => setOpenFilter((v) => !v)}
-                  className={`flex items-center gap-1 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm transition ${
-                    statusFilter
-                      ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
-                  }`}
-                >
-                  {t.ship_filter_status}
-                  {statusFilter === "done" ? ` · ${t.ship_filter_done}` : statusFilter === "todo" ? ` · ${t.ship_filter_todo}` : ""}
-                  <span className="text-xs opacity-50">▾</span>
-                </button>
-                {openFilter && (
-                  <div className="absolute left-0 top-full z-50 mt-1 min-w-[150px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
-                    {(
-                      [
-                        { label: t.filter_all, value: "" },
-                        { label: t.ship_filter_done, value: "done" },
-                        { label: t.ship_filter_todo, value: "todo" },
-                      ] as { label: string; value: "" | "done" | "todo" }[]
-                    ).map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => {
-                          setStatusFilter(opt.value);
-                          setOpenFilter(false);
-                        }}
-                        className={`block w-full px-4 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-zinc-800 ${
-                          statusFilter === opt.value
-                            ? "font-medium text-emerald-600 dark:text-emerald-400"
-                            : "text-gray-700 dark:text-zinc-300"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 필터 초기화 */}
-              {statusFilter && (
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter("")}
-                  className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
-                >
-                  {t.ship_filter_reset}
-                </button>
-              )}
-
-              {/* 엑셀 다운로드 */}
-              <button
-                type="button"
-                onClick={handleExcelDownload}
-                disabled={isDownloading}
-                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
-              >
-                {isDownloading ? t.ship_excel_downloading : t.ship_excel_download}
-              </button>
-
-              {/* 검색 */}
-              <input
-                type="text"
-                placeholder={t.ship_search_placeholder}
-                className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-                style={{ minWidth: "200px" }}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+          <>
+            {/* 통계 카드 */}
+            <div className="flex gap-2 border-b border-zinc-200 bg-white px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950">
+              <StatCard
+                label={t.ship_stats_done}
+                value={stats.done}
+                color="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+              />
+              <StatCard
+                label={t.ship_stats_todo}
+                value={stats.todo}
+                color="bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+              />
+              <StatCard
+                label="IN DELIVERY"
+                value={stats.inDelivery}
+                color="bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300"
+              />
+              <StatCard
+                label="전체"
+                value={stats.total}
+                color="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
               />
             </div>
-          </div>,
+
+            {/* 필터바 */}
+            <div className="w-full border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* 작성 상태 필터 */}
+                <div className="relative" data-filter-dropdown>
+                  <button
+                    type="button"
+                    onClick={() => setOpenFilter((v) => !v)}
+                    className={`flex items-center gap-1 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm transition ${
+                      statusFilter
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
+                    }`}
+                  >
+                    {t.ship_filter_status}
+                    {statusFilter === "done"
+                      ? ` · ${t.ship_filter_done}`
+                      : statusFilter === "todo"
+                        ? ` · ${t.ship_filter_todo}`
+                        : ""}
+                    <span className="text-xs opacity-50">▾</span>
+                  </button>
+                  {openFilter && (
+                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[150px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                      {(
+                        [
+                          { label: t.filter_all, value: "" },
+                          { label: t.ship_filter_done, value: "done" },
+                          { label: t.ship_filter_todo, value: "todo" },
+                        ] as { label: string; value: "" | "done" | "todo" }[]
+                      ).map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setStatusFilter(opt.value);
+                            setOpenFilter(false);
+                          }}
+                          className={`block w-full px-4 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-zinc-800 ${
+                            statusFilter === opt.value
+                              ? "font-medium text-emerald-600 dark:text-emerald-400"
+                              : "text-gray-700 dark:text-zinc-300"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {statusFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter("")}
+                    className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                  >
+                    {t.ship_filter_reset}
+                  </button>
+                )}
+
+                {/* 엑셀 다운로드 */}
+                <button
+                  type="button"
+                  onClick={handleExcelDownload}
+                  disabled={isDownloading}
+                  className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+                >
+                  {isDownloading ? t.ship_excel_downloading : t.ship_excel_download}
+                </button>
+
+                {/* 검색 */}
+                <input
+                  type="text"
+                  placeholder={t.ship_search_placeholder}
+                  className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  style={{ minWidth: "200px" }}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {t.ship_stats_shown} {rowData.length}
+              </p>
+            </div>
+          </>,
           portalEl,
         )}
 
-      {/* 통계 + 안내 */}
-      <div className="flex flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{t.page_shipping}</h1>
-        </div>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {t.ship_stats_shown} {filteredOrders.length} · {t.ship_stats_done}{" "}
-          <span className="font-medium text-emerald-600 dark:text-emerald-400">
-            {shippingDoneCount}
-          </span>
-          {" · "}{t.ship_stats_todo}{" "}
-          <span className="font-medium text-zinc-700 dark:text-zinc-300">
-            {shippingTodoCount}
-          </span>
-          {!searchQuery && ordersDoneCount > 0 && (
-            <span className="ml-2 text-zinc-400 dark:text-zinc-500">
-              · DONE {ordersDoneCount}{t.ship_stats_hidden}
-            </span>
-          )}
-          {" · "}{t.ship_drag_hint}
-        </p>
+      {/* 제목 */}
+      <div className="mb-1 flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">{t.page_shipping}</h1>
       </div>
 
-      <div ref={wrapperRef} className="w-full rounded-2xl bg-white shadow-sm outline outline-1 outline-zinc-200 dark:bg-zinc-950 dark:outline-zinc-800">
-        {/* sticky 헤더 */}
-        <div
-          className="sticky z-20 bg-white dark:bg-zinc-950"
-          style={{ top: 108, overflowX: "hidden" }}
-        >
-          <table
-            ref={headerTableRef}
-            className="min-w-full border-collapse text-left text-sm"
-            style={{ tableLayout: "fixed", width: "100%", minWidth: TOTAL_MIN_WIDTH }}
-          >
-            <colgroup>
-              <col style={{ width: W.num }} />
-              <col style={{ width: W.order_num }} />
-              <col style={{ width: W.date }} />
-              <col style={{ width: W.product_names }} />
-              <col style={{ width: W.downloaded, minWidth: W.downloaded }} />
-              <col style={{ width: W.recipient_name }} />
-              <col style={{ width: W.recipient_phone }} />
-              <col style={{ width: W.recipient_email }} />
-              <col style={{ width: W.zip_code }} />
-              <col style={{ width: W.region }} />
-              <col style={{ width: W.city }} />
-              <col style={{ width: W.address }} />
-              <col style={{ width: W.customs_number }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className={thClass}>{t.col_num}</th>
-                <th className={thClass}>{t.col_order_num}</th>
-                <th className={thClass}>{t.col_date}</th>
-                <th className={`${thClass} text-left`}>{t.col_product_name}</th>
-                <th style={{ width: W.downloaded, minWidth: W.downloaded }} className={thClass}>
-                  {t.ship_col_down}
-                </th>
-                <th className={thClass}>{t.ship_col_recipient}</th>
-                <th className={thClass}>{t.ship_col_phone}</th>
-                <th className={thClass}>{t.ship_col_email}</th>
-                <th className={thClass}>{t.ship_col_zip}</th>
-                <th className={thClass}>{t.ship_col_region}</th>
-                <th className={thClass}>{t.ship_col_city}</th>
-                <th className={`${thClass} text-left`}>{t.ship_col_address}</th>
-                <th className={`${thClass} border-r-0`}>{t.ship_col_customs}</th>
-              </tr>
-            </thead>
-          </table>
-        </div>
-
-        {/* 편집 중 텍스트 전문 미리보기 바 */}
-        {focusedCell && (() => {
-          const isActiveEdit = editing?.orderNum === focusedCell.orderNum && editing?.field === focusedCell.field;
-          const focusedOrder = orders.find((o) => o.order_num === focusedCell.orderNum);
-          const savedVal = focusedOrder?.shipping?.[focusedCell.field] ?? "";
-          return (
-            <div className="sticky z-20 flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-3 py-1.5 dark:border-sky-800 dark:bg-sky-950/40" style={{ top: 108 }}>
-              <span className="shrink-0 text-xs font-semibold text-sky-600 dark:text-sky-400">
-                {fieldLabels[focusedCell.field]}
-              </span>
-              {isActiveEdit ? (
-                <input
-                  ref={barInputRef}
-                  value={draft}
-                  onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
-                  onBlur={(e) => {
-                    if (e.relatedTarget === inputRef.current) return;
-                    const cur = editingRef.current;
-                    if (!cur) return;
-                    const d = draftRef.current;
-                    const b = editBaselineRef.current;
-                    editingRef.current = null;
-                    void saveField(cur.orderNum, cur.field, d, b);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); void finishEdit(focusedCell.orderNum, focusedCell.field); }
-                    if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
-                  }}
-                  className="flex-1 rounded border border-emerald-400 bg-white px-2 py-0.5 text-sm text-zinc-900 outline-none focus:ring-1 focus:ring-emerald-400 dark:bg-zinc-900 dark:text-zinc-100"
-                  placeholder={fieldLabels[focusedCell.field]}
-                />
-              ) : (
-                <span
-                  className="flex-1 cursor-pointer rounded px-2 py-0.5 text-sm text-zinc-700 hover:bg-sky-100 dark:text-zinc-300 dark:hover:bg-sky-900/30 break-all"
-                  onClick={() => startEdit(focusedCell.orderNum, focusedCell.field, savedVal)}
-                >
-                  {savedVal.trim() || <span className="text-zinc-400 dark:text-zinc-600">{t.ship_empty_cell}</span>}
-                </span>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* 스크롤 바디 */}
-        <div ref={tableRef} className="overflow-x-auto">
-          {filteredOrders.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-zinc-500 dark:text-zinc-400">
-              {searchQuery || statusFilter ? t.state_no_results : t.ship_no_orders}
-            </p>
-          ) : (
-            <table
-              className="min-w-full border-collapse text-left text-sm"
-              style={{ tableLayout: "fixed", width: "100%", minWidth: TOTAL_MIN_WIDTH }}
+      {/* FormulaBar + AG Grid */}
+      <div className="flex h-full flex-col">
+        {/* FormulaBar */}
+        {focusedCell ? (
+          <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-zinc-300 bg-white px-2 dark:border-zinc-700 dark:bg-zinc-900">
+            <span className="select-none font-mono text-xs font-bold text-emerald-500">
+              fx
+            </span>
+            <span className="min-w-[80px] shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+              {focusedCell.label}
+            </span>
+            <div className="mx-1 h-5 w-px bg-zinc-300 dark:bg-zinc-600" />
+            <input
+              type="text"
+              value={formulaDraft}
+              onChange={(e) => {
+                setFormulaDraft(e.target.value);
+                setFormulaDirty(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleFormulaSave();
+                if (e.key === "Escape") setFocusedCell(null);
+              }}
+              className="min-w-0 flex-1 bg-transparent text-sm text-zinc-800 focus:outline-none dark:text-zinc-100"
+            />
+            <button
+              type="button"
+              onClick={() => setFocusedCell(null)}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
             >
-              <colgroup>
-                <col style={{ width: W.num }} />
-                <col style={{ width: W.order_num }} />
-                <col style={{ width: W.date }} />
-                <col style={{ width: W.product_names }} />
-                <col style={{ width: W.downloaded, minWidth: W.downloaded }} />
-                <col style={{ width: W.recipient_name }} />
-                <col style={{ width: W.recipient_phone }} />
-                <col style={{ width: W.recipient_email }} />
-                <col style={{ width: W.zip_code }} />
-                <col style={{ width: W.region }} />
-                <col style={{ width: W.city }} />
-                <col style={{ width: W.address }} />
-                <col style={{ width: W.customs_number }} />
-              </colgroup>
-              <tbody>
-                {filteredOrders.map((order, idx) => {
-                  const done = isComplete(order);
-                  const isOrderDone = order.progress === "DONE";
-                  const downloaded = order.shipping?.downloaded ?? false;
-                  const rowBg = downloaded
-                    ? "bg-blue-50 dark:bg-blue-950/20"
-                    : done
-                    ? "bg-emerald-50 dark:bg-emerald-950/20"
-                    : "bg-white dark:bg-zinc-950";
-                  const s = order.shipping;
+              ✕
+            </button>
+            <button
+              type="button"
+              onClick={handleFormulaSave}
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-lg transition ${
+                formulaDirty
+                  ? "text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  : "text-zinc-300 dark:text-zinc-600"
+              }`}
+            >
+              ✓
+            </button>
+          </div>
+        ) : (
+          <div className="flex h-11 items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 dark:border-zinc-700 dark:bg-zinc-900">
+            <span className="select-none font-mono text-xs font-bold text-zinc-400">
+              fx
+            </span>
+            <span className="text-sm text-zinc-400">셀을 선택하세요</span>
+          </div>
+        )}
 
-                  return (
-                    <tr
-                      key={order.order_num}
-                      data-row-idx={idx}
-                      className={`${rowBg} hover:brightness-95 ${isOrderDone ? "opacity-50" : ""}`}
-                    >
-                      {/* # */}
-                      <td className={`${tdBase} text-center text-xs text-zinc-400`}>
-                        {idx + 1}
-                      </td>
-
-                      {/* 주문번호 */}
-                      <td className={`${tdBase} whitespace-nowrap font-mono text-xs`}>
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span>{order.order_num}</span>
-                          {isOrderDone && (
-                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-                              DONE
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* 주문일자 */}
-                      <td className={`${tdBase} whitespace-nowrap text-center text-xs text-zinc-500 dark:text-zinc-400`}>
-                        {formatDate(order.date)}
-                      </td>
-
-                      {/* 상품명 */}
-                      <td className={`${tdBase} text-xs text-zinc-600 dark:text-zinc-400`}>
-                        <div className="overflow-hidden">
-                          {order.product_names.split("\n").map((name, i) => (
-                            <div key={i} className="truncate">{name}</div>
-                          ))}
-                        </div>
-                      </td>
-
-                      {/* 다운 체크박스 */}
-                      <td className={`${tdBase} text-center`} style={{ width: W.downloaded }}>
-                        <input
-                          type="checkbox"
-                          checked={order.progress === "IN DELIVERY"}
-                          onChange={(e) => handleDownloadToggle(order.order_num, e.target.checked)}
-                          className="h-4 w-4 cursor-pointer accent-blue-600"
-                        />
-                      </td>
-
-                      {/* 편집 가능 셀들 */}
-                      {EDITABLE_FIELDS.map((field, fi) => {
-                        const raw = s?.[field] ?? "";
-                        const active = isEditing(order.order_num, field);
-                        const isLast = fi === EDITABLE_FIELDS.length - 1;
-                        const isSmall =
-                          field === "recipient_name" || field === "recipient_email";
-                        const missing = !active && isMissingField(order.shipping, field);
-                        const isFocused = focusedCell?.orderNum === order.order_num && focusedCell?.field === field;
-                        const highlight = isFillHighlight(idx, field);
-
-                        return (
-                          <td
-                            key={field}
-                            className={`${tdBase} relative ${active ? editingBg : highlight ? "ring-2 ring-inset ring-blue-400 bg-blue-50 dark:bg-blue-950/30" : missing ? "bg-amber-50 dark:bg-amber-950/30" : ""} ${isLast ? "border-r-0" : ""} ${missing && !highlight ? "border-amber-300 dark:border-amber-700" : ""}`}
-                            onClick={() => {
-                              if (!active) startEdit(order.order_num, field, raw);
-                            }}
-                          >
-                            {active ? (
-                              <input
-                                ref={inputRef}
-                                value={draft}
-                                onChange={(e) => { setDraft(e.target.value); draftRef.current = e.target.value; }}
-                                onBlur={(e) => {
-                                  if (e.relatedTarget === barInputRef.current) return;
-                                  const cur = editingRef.current;
-                                  if (!cur || cur.orderNum !== order.order_num || cur.field !== field) return;
-                                  const d = draftRef.current;
-                                  const b = editBaselineRef.current;
-                                  editingRef.current = null;
-                                  void saveField(cur.orderNum, cur.field, d, b);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    void finishEdit(order.order_num, field);
-                                  }
-                                  if (e.key === "Escape") {
-                                    e.preventDefault();
-                                    cancelEdit();
-                                  }
-                                }}
-                                className={`w-full rounded border border-emerald-400 bg-white px-1 py-0.5 text-zinc-900 outline-none focus:ring-1 focus:ring-emerald-400 dark:bg-zinc-900 dark:text-zinc-100 ${isSmall ? "text-xs" : "text-sm"}`}
-                                placeholder={fieldLabels[field]}
-                              />
-                            ) : (
-                              <button type="button" className={cellBtn}>
-                                <span
-                                  className={`${isSmall ? "text-xs" : ""} ${raw.trim() ? "" : "text-zinc-400 dark:text-zinc-600"}`}
-                                >
-                                  {raw.trim() ? raw : fieldLabels[field]}
-                                </span>
-                              </button>
-                            )}
-                            {isFocused && (
-                              <FillHandle rowIdx={idx} field={field} rawValue={raw} />
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+        {/* 그리드 */}
+        <div className="min-h-0 flex-1" style={{ height: "100%", width: "100%" }}>
+          <AgGridReact<ShippingGridRow>
+            ref={gridRef}
+            theme={fankoTheme}
+            rowData={rowData}
+            columnDefs={colDefs}
+            defaultColDef={defaultColDef}
+            getRowId={getRowId}
+            getRowStyle={getRowStyle}
+            context={gridContext}
+            onCellValueChanged={handleCellValueChanged}
+            onCellFocused={handleCellFocused}
+            suppressClickEdit={false}
+            enableCellTextSelection
+            stopEditingWhenCellsLoseFocus
+            rowBuffer={20}
+          />
         </div>
       </div>
     </>
