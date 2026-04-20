@@ -9,12 +9,12 @@ import {
   type ValueFormatterParams,
   type ICellRendererParams,
   type CellValueChangedEvent,
-  type CellClickedEvent,
+  type CellFocusedEvent,
   type GetRowIdParams,
   type RowClassParams,
   type RowStyle,
 } from "ag-grid-community";
-import { CellEditSheet, type EditingCell } from "@/components/cell-edit-sheet";
+import { FormulaBar, type FocusedCell } from "@/components/formula-bar";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -139,8 +139,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       pinned: "left" as const,
       editable: true,
       cellEditor: "agDateStringCellEditor",
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
     },
     // ── 상품 정보 ─────────────────────────────────────────────────────────
     {
@@ -149,8 +147,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 200,
       editable: true,
       cellEditor: "agTextCellEditor",
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
     },
     {
       field: "product_option",
@@ -158,8 +154,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 150,
       editable: true,
       cellEditor: "agTextCellEditor",
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
         value ?? "—",
     },
@@ -170,8 +164,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 135,
       editable: true,
       cellRenderer: ProgressCellRenderer,
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       ...selectOpts(ORDER_PROGRESS),
     },
     // ── 단품/세트 ─────────────────────────────────────────────────────────
@@ -180,8 +172,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "단품/세트",
       width: 90,
       editable: true,
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       ...selectOpts(SET_TYPES),
       cellStyle: (params) =>
         params.value === "SET" ? { backgroundColor: "#fee2e2" } : null,
@@ -192,8 +182,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "선물",
       width: 75,
       editable: true,
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       ...selectOpts(["no", "ask"] as const),
       cellStyle: (params) =>
         params.value === "ask" ? { backgroundColor: "#fee2e2" } : null,
@@ -204,8 +192,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "사진",
       width: 95,
       editable: true,
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       ...selectOpts(PHOTO_STATUS),
     },
     // ── 플랫폼 ───────────────────────────────────────────────────────────
@@ -214,8 +200,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "플랫폼",
       width: 90,
       editable: true,
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       ...selectOpts(PLATFORMS),
     },
     // ── 경로 ─────────────────────────────────────────────────────────────
@@ -224,8 +208,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "경로",
       width: 85,
       editable: true,
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       ...selectOpts(ORDER_ROUTES),
     },
     // ── 고객명 ───────────────────────────────────────────────────────────
@@ -235,8 +217,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 130,
       editable: true,
       cellEditor: "agTextCellEditor",
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
         value ?? "—",
     },
@@ -247,8 +227,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       width: 100,
       editable: true,
       cellEditor: "agTextCellEditor",
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
         value ?? "—",
     },
@@ -258,8 +236,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       headerName: "카테고리",
       width: 105,
       editable: true,
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       ...selectOpts(["", ...PRODUCT_CATEGORIES] as const),
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
         value ?? "—",
@@ -272,8 +248,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 1, precision: 0 },
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
     },
     // ── 판매가₽ ───────────────────────────────────────────────────────────
     {
@@ -283,8 +257,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       valueFormatter: rubFormatter,
     },
     // ── 원화매입₩ ─────────────────────────────────────────────────────────
@@ -295,8 +267,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       valueFormatter: krwFormatter,
     },
     // ── 선결제₽ ───────────────────────────────────────────────────────────
@@ -307,8 +277,6 @@ function buildColDefs(): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
-      cellEditorPopup: true,
-      cellEditorPopupPosition: "over" as const,
       valueFormatter: rubFormatter,
     },
     // ── 잔금₽ (computed, 읽기 전용) ───────────────────────────────────────
@@ -389,8 +357,9 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const [history, setHistory]         = useState<HistoryEntry[]>([]);
   const [toast, setToast]             = useState<string | null>(null);
   const [toastType, setToastType]     = useState<"error" | "success">("error");
-  const [isMobile, setIsMobile]       = useState(false);
-  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [isMobile, setIsMobile]         = useState(false);
+  const [focusedCell, setFocusedCell]   = useState<FocusedCell | null>(null);
+  const gridRef                         = useRef<AgGridReact<OrderGridRow>>(null);
 
   const colDefs = useMemo(() => buildColDefs(), []);
 
@@ -603,8 +572,8 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     [saveFieldChange],
   );
 
-  // ── 모바일 시트 저장 래퍼 ────────────────────────────────────────────────
-  const handleSheetSave = useCallback(
+  // ── FormulaBar 저장 래퍼 ─────────────────────────────────────────────────
+  const handleFormulaSave = useCallback(
     (
       field: keyof OrderGridRow,
       rowData: OrderGridRow,
@@ -617,25 +586,42 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
         newValue,
         () => {},
       );
+      setFocusedCell(null);
     },
     [saveFieldChange],
   );
 
-  // ── 모바일 셀 클릭 인터셉터 ─────────────────────────────────────────────
-  const handleCellClicked = useCallback(
-    (event: CellClickedEvent<OrderGridRow>) => {
-      if (!isMobile) return;
-      const field = event.colDef.field as keyof OrderGridRow | undefined;
-      if (!field || event.colDef.editable !== true || !event.data) return;
-      event.api.stopEditing(true);
-      setEditingCell({
+  // ── 셀 포커스 → FormulaBar 업데이트 ─────────────────────────────────────
+  const handleCellFocused = useCallback(
+    (event: CellFocusedEvent) => {
+      // rowIndex === null = 그리드 외부 클릭(FormulaBar 포함) → 유지
+      if (event.rowIndex === null || event.rowIndex === undefined) return;
+      const col = event.column;
+      if (!col || typeof col === "string") {
+        setFocusedCell(null);
+        return;
+      }
+      const api = gridRef.current?.api;
+      if (!api) return;
+
+      const colId  = col.getColId();
+      const colDef = api.getColumnDef(colId);
+      const node   = api.getDisplayedRowAtIndex(event.rowIndex);
+
+      if (!colDef || colDef.editable !== true || !node?.data) {
+        setFocusedCell(null);
+        return;
+      }
+
+      const field = colId as keyof OrderGridRow;
+      setFocusedCell({
         field,
-        fieldLabel: event.colDef.headerName ?? (field as string),
-        currentValue: event.data[field] as string | number | null,
-        rowData: event.data,
+        fieldLabel: colDef.headerName ?? colId,
+        currentValue: node.data[field] as string | number | null,
+        rowData: node.data,
       });
     },
-    [isMobile],
+    [],
   );
 
   // ── 데이터 새로고침 (배송 import 후 호출) ─────────────────────────────────
@@ -870,33 +856,47 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
           portalEl,
         )}
 
-      {/* ── AG Grid (h-full = fills <main flex-1 min-h-0>) ─────────────── */}
-      <div style={{ height: "100%", width: "100%" }}>
-        <AgGridReact<OrderGridRow>
-          theme={fankoTheme}
-          rowData={rowData}
-          columnDefs={colDefs}
-          defaultColDef={defaultColDef}
-          getRowId={getRowId}
-          getRowStyle={getRowStyle}
-          onCellValueChanged={handleCellValueChanged}
-          onCellClicked={handleCellClicked}
-          suppressClickEdit={isMobile}
-          undoRedoCellEditing={true}
-          undoRedoCellEditingLimit={30}
-          enableCellTextSelection={true}
-          stopEditingWhenCellsLoseFocus={true}
-          suppressMovableColumns={false}
-          rowBuffer={20}
-        />
+      {/* ── FormulaBar + AG Grid (flex column) ──────────────────────────── */}
+      <div className="flex h-full flex-col">
+        {!isMobile && (
+          <FormulaBar
+            cell={focusedCell}
+            isMobile={false}
+            onSave={handleFormulaSave}
+            onCancel={() => setFocusedCell(null)}
+          />
+        )}
+        <div className="min-h-0 flex-1" style={{ height: "100%", width: "100%" }}>
+          <AgGridReact<OrderGridRow>
+            ref={gridRef}
+            theme={fankoTheme}
+            rowData={rowData}
+            columnDefs={colDefs}
+            defaultColDef={defaultColDef}
+            getRowId={getRowId}
+            getRowStyle={getRowStyle}
+            onCellValueChanged={handleCellValueChanged}
+            onCellFocused={handleCellFocused}
+            suppressClickEdit={true}
+            undoRedoCellEditing={true}
+            undoRedoCellEditingLimit={30}
+            enableCellTextSelection={true}
+            stopEditingWhenCellsLoseFocus={true}
+            suppressMovableColumns={false}
+            rowBuffer={20}
+          />
+        </div>
       </div>
 
-      {/* ── 모바일 셀 편집 시트 ──────────────────────────────────────────── */}
-      <CellEditSheet
-        cell={editingCell}
-        onSave={handleSheetSave}
-        onClose={() => setEditingCell(null)}
-      />
+      {/* ── 모바일 FormulaBar (portal fixed bottom) ──────────────────────── */}
+      {isMobile && (
+        <FormulaBar
+          cell={focusedCell}
+          isMobile={true}
+          onSave={handleFormulaSave}
+          onCancel={() => setFocusedCell(null)}
+        />
+      )}
     </>
   );
 }
