@@ -4,6 +4,14 @@ import { signOut } from "@/lib/actions/auth";
 import Link from "next/link";
 import { useState } from "react";
 import { SidebarNav } from "@/components/nav-menu";
+import { useLanguage } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n";
+
+const LOCALES: { value: Locale; label: string }[] = [
+  { value: "ko", label: "한국어" },
+  { value: "en", label: "English" },
+  { value: "ru", label: "Русский" },
+];
 
 export function CrmShell({
   email,
@@ -13,6 +21,7 @@ export function CrmShell({
   children: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { locale, setLocale } = useLanguage();
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-950">
@@ -72,18 +81,45 @@ export function CrmShell({
           />
         </div>
 
-        {/* 하단: 유저 정보 + 로그아웃 (expanded일 때만) */}
+        {/* 하단: 언어 선택 + 유저 정보 + 로그아웃 (expanded일 때만) */}
         {expanded && (
-          <div className="border-t border-slate-800 px-5 py-4">
-            <p className="truncate text-xs text-slate-500">{email}</p>
-            <form action={signOut} className="mt-2">
-              <button
-                type="submit"
-                className="rounded-md border border-slate-700 px-3 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
-              >
-                로그아웃
-              </button>
-            </form>
+          <div className="border-t border-slate-800 px-4 py-4 flex flex-col gap-3">
+            {/* 언어 선택 */}
+            <div>
+              <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                언어 / Language
+              </p>
+              <div className="flex gap-1">
+                {LOCALES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setLocale(value)}
+                    className={[
+                      "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                      locale === value
+                        ? "bg-violet-700 text-white"
+                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-100",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 유저 정보 + 로그아웃 */}
+            <div>
+              <p className="truncate text-xs text-slate-500">{email}</p>
+              <form action={signOut} className="mt-2">
+                <button
+                  type="submit"
+                  className="rounded-md border border-slate-700 px-3 py-1 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+                >
+                  로그아웃
+                </button>
+              </form>
+            </div>
           </div>
         )}
       </aside>
