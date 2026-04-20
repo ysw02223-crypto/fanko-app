@@ -151,7 +151,8 @@ async function fetchAllShippingOrders(): Promise<OrderForShipping[]> {
     supabase
       .from("orders")
       .select("order_num, date, progress")
-      .order("date", { ascending: false }),
+      .order("date", { ascending: true })
+      .order("order_num", { ascending: true }),
     supabase.from("order_items").select("order_num, product_name"),
     supabase.from("shipping_info").select(SHIPPING_SELECT),
   ]);
@@ -200,13 +201,14 @@ function DownloadedRenderer(
 
 // ── 셀 렌더러: 상품명 ─────────────────────────────────────────────────────
 
-function ProductNamesRenderer({
-  value,
-}: ValueFormatterParams<ShippingGridRow, string>) {
+function ProductNamesRenderer(
+  params: ICellRendererParams<ShippingGridRow, string>,
+) {
+  const value = params.value;
   if (!value) return <span className="text-zinc-400">—</span>;
-  const names = (value as string).split("\n");
+  const names = value.split("\n");
   return (
-    <div className="flex flex-col justify-center gap-0.5 py-0.5">
+    <div className="flex flex-col justify-center gap-0.5 py-1">
       {names.map((name, i) => (
         <span
           key={i}
@@ -691,6 +693,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
         flex: 1,
         minWidth: 180,
         editable: false,
+        autoHeight: true,
         cellRenderer: ProductNamesRenderer,
         tooltipField: "product_names",
       },

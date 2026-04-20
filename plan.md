@@ -752,3 +752,130 @@ if (!ready) {
 | 올바른 8자리 order_num 입력 | 즉시 빨간색 (product_name 없어서) | 조용히 대기 (에러 없음) |
 | product_name까지 입력 완료 | INSERT → 성공 → draft 행 유지 → 재편집 시 duplicate key 에러 | INSERT → 성공 → draft 행 즉시 제거 → 실제 행으로 교체 |
 | INSERT 실패 (잘못된 값 등) | 빨간색 + toast | 빨간색 + toast (동일) |
+
+---
+
+---
+
+# 배송 관리 테이블 텍스트 겹침 버그
+
+> **증상**: 상품명 셀의 텍스트가 아래 행으로 삐져나와 겹쳐 보임 (스크린샷 확인)
+
+---
+
+## 원인 분석
+
+### 원인 1 (핵심): 고정 `rowHeight` + 다중 상품명 오버플로우
+
+`fankoTheme`에 `rowHeight: 36`이 고정값으로 설정돼 있다.  
+한 주문에 상품이 2개 이상 있으면 `ProductNamesRenderer`가 `flex-col`로 여러 줄을 렌더링하는데,  
+AG Grid는 행 높이를 고정(`position: absolute`, `height: 36px`)으로 배치하므로  
+셀 내용이 36px를 초과하면 다음 행 DOM 위에 시각적으로 겹쳐 출력된다.
+
+```
+[행 1 — rowTop: 0px, height: 36px]  ← 실제 DOM 영역
+  └─ 상품명 A  (18px)
+  └─ 상품명 B  (18px)   ← 이미 36px 초과
+  └─ 상품명 C  (18px)   ← 다음 행 DOM 위에 그려짐 ← 겹침 발생
+
+[행 2 — rowTop: 36px, height: 36px]
+  └─ 상품명 D
+```
+
+AG Grid Community의 기본 동작:  
+- `overflow: hidden`으로 클리핑하지 않는 경우, 내용이 다음 행 위로 흘러넘침  
+- 특히 `flex-col`으로 쌓이는 커스텀 렌더러는 부모 height를 무시하고 확장됨
+
+### 원인 2 (부수): `ProductNamesRenderer` 타입 불일치
+
+현재 코드:
+```tsx
+function ProductNamesRenderer({
+  value,
+}: ValueFormatterParams<ShippingGridRow, string>) { ... }
+```
+
+`ValueFormatterParams`는 `valueFormatter` 전용 타입인데, `cellRenderer`로 등록해서 사용 중.  
+AG Grid가 실제로 넘기는 props는 `ICellRendererParams` 이므로 타입 불일치.  
+런타임에서는 `value` 프로퍼티가 두 타입 모두 존재하기 때문에 일단 동작하지만,  
+`params.node`, `params.api` 등 cellRenderer 전용 props는 접근 불가 → 잠재적 버그.
+
+### 원인 3 (부수): `fetchAllShippingOrders` 내 정렬 미동기화
+
+`components/shipping-table.tsx` 내부의 `fetchAllShippingOrders`(클라이언트 측 재fetch 함수)가  
+`lib/actions/shipping.ts`와 별도로 관리되며, 정렬 방향이 아직 `ascending: false`로 남아 있음.
+
+---
+
+## 해결 방안
+
+### 방안 A — `autoHeight` 적용 (추천)
+
+열 정의에서 `product_names` 컬럼에 `autoHeight: true` 추가.  
+AG Grid가 각 행의 실제 콘텐츠 높이를 측정하여 `rowHeight`를 동적으로 조절함.
+
+```tsx
+// product_names 컬럼 정의
+{
+  field: "product_names",
+  autoHeight: true,   // ← 추가
+  cellRenderer: ProductNamesRenderer,
+  ...
+}
+```
+
+- 장점: 몇 개의 상품이 있든 모두 온전히 표시, 구현 단순
+- 단점: 행 수가 수백 개를 넘으면 AG Grid가 모든 셀 높이를 측정하여 성능 저하 가능  
+  → 현재 배송 목록은 최대 수십~백 행 수준이므로 실용상 문제 없음
+
+### 방안 B — `getRowHeight` 동적 계산
+
+`AgGridReact` prop으로 `getRowHeight` 콜백 추가.  
+`\n` 구분자로 상품 개수를 세어 행 높이를 미리 계산.
+
+```tsx
+const getRowHeight = useCallback(
+  (params: { data?: ShippingGridRow }) =>
+    Math.max(36, (params.data?.product_names.split("\n").length ?? 1) * 20 + 8),
+  [],
+);
+// <AgGridReact getRowHeight={getRowHeight} ... />
+```
+
+- 장점: autoHeight보다 렌더링 1회 적게 발생 (DOM 측정 없이 사전 계산)
+- 단점: 상품명 줄 높이(20px)가 실제 렌더링 폰트와 맞지 않으면 부정확
+
+### 방안 C — 첫 번째 상품만 표시 + tooltip
+
+`ProductNamesRenderer`에서 첫 번째 상품명만 셀에 표시하고,  
+전체 목록은 `tooltipValueGetter`로 hover 시 확인.
+
+```tsx
+function ProductNamesRenderer({ value }: ICellRendererParams<ShippingGridRow, string>) {
+  const names = (value ?? "").split("\n");
+  const extra = names.length - 1;
+  return (
+    <span className="truncate text-xs text-zinc-600">
+      {names[0]}{extra > 0 && <span className="ml-1 text-zinc-400">(+{extra})</span>}
+    </span>
+  );
+}
+```
+
+- 장점: 행 높이 완전 고정 → 레이아웃 안정적
+- 단점: 상품 전체를 한눈에 볼 수 없음
+
+---
+
+## 선택 방안 및 구현 계획
+
+**방안 A + 원인 2·3 동시 수정** 적용 예정.
+
+### 체크리스트
+
+- [x] `ProductNamesRenderer` 타입을 `ICellRendererParams<ShippingGridRow, string>`으로 수정
+- [x] `product_names` 컬럼 정의에 `autoHeight: true` 추가
+- [x] `fankoTheme`의 `rowHeight: 36`은 최솟값으로 유지 (autoHeight가 더 큰 높이 요구 시 override됨)
+- [x] `fetchAllShippingOrders` 정렬을 `ascending: true`로 수정
+- [x] TypeScript 검사 통과 확인
+- [ ] 커밋 및 배포
