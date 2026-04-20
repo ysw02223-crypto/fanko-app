@@ -369,6 +369,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const [focusedCell, setFocusedCell]   = useState<FocusedCell | null>(null);
   const [draftErrors, setDraftErrors]   = useState<ReadonlySet<string>>(new Set<string>());
   const gridRef                         = useRef<AgGridReact<OrderGridRow>>(null);
+  const savingDrafts                    = useRef<Set<string>>(new Set());
 
   const colDefs = useMemo(() => buildColDefs(), []);
 
@@ -665,12 +666,13 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
         updated.product_name.trim() !== "";
 
       if (!ready) {
-        const touched = updated.order_num !== "" || updated.product_name !== "";
-        if (touched) {
-          setDraftErrors((prev) => new Set<string>([...prev, row.rowKey]));
-        }
+        // 미완성 상태에선 에러 표시 없이 조용히 대기
         return;
       }
+
+      // 이미 저장 중인 행이면 중복 INSERT 차단 (race condition 방지)
+      if (savingDrafts.current.has(row.rowKey)) return;
+      savingDrafts.current.add(row.rowKey);
 
       const result: InsertDraftOrderResult = await insertDraftOrderAction({
         order_num:     updated.order_num.trim(),
@@ -691,6 +693,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       });
 
       if ("error" in result) {
+        savingDrafts.current.delete(row.rowKey);
         setDraftErrors((prev) => new Set<string>([...prev, row.rowKey]));
         setToastType("error");
         setToast(result.error);
@@ -702,9 +705,14 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
         s.delete(row.rowKey);
         return s;
       });
+      // 저장 완료된 draft 행 제거 + FormulaBar 초기화 (stale rowData 차단)
+      setAllRows((prev) => prev.filter((r) => r.rowKey !== row.rowKey));
+      setFocusedCell(null);
       setToastType("success");
       setToast("주문을 저장했습니다.");
       await fetchOrders();
+      // fetchOrders 완료 후 잠금 해제 (그 전까지 중복 INSERT 차단)
+      savingDrafts.current.delete(row.rowKey);
     },
     [fetchOrders],
   );

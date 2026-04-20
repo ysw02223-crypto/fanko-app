@@ -332,7 +332,15 @@ export async function insertDraftOrderAction(
   const price_rub       = Number(L.price_rub) || 0;
   const prepayment_rub  = Number(L.prepayment_rub) || 0;
 
-  // ① orders INSERT
+  // ① 중복 주문번호 사전 체크
+  const { data: existing } = await supabase
+    .from("orders")
+    .select("order_num")
+    .eq("order_num", order_num)
+    .maybeSingle();
+  if (existing) return { error: `주문번호 ${order_num}은 이미 존재합니다.` };
+
+  // ② orders INSERT
   const { error: orderErr } = await supabase.from("orders").insert({
     order_num,
     platform,

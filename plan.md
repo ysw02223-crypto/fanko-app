@@ -650,5 +650,105 @@ Phase 2 — orders-ag-grid-table.tsx 핵심 로직
 Phase 3 — JSX / 마무리
   [x] + 행 추가 버튼 푸터 추가
   [x] typecheck + build 통과
-  [ ] 커밋 & 배포
+  [x] 커밋 & 배포
+
+Phase 4 — 버그 수정 (주문번호/상품명 오류 반복 문제)
+  [x] Bug 1: INSERT 성공 후 draft 행 중복 INSERT 방지
+  [x] Bug 2: 미완성 입력 중 불필요한 빨간색 제거
 ```
+
+---
+
+## 6. 버그 수정: 주문번호/상품명 오류 반복 문제
+
+> **증상**: 올바른 8자리 주문번호를 입력해도 오류가 반복됨.
+
+---
+
+### Bug 1 — INSERT 성공 후 draft 행이 사라지지 않아 중복 INSERT 발생 (Critical)
+
+**원인 파일**: `components/orders-ag-grid-table.tsx`
+
+**원인 코드** (`fetchOrders`, ~line 591):
+
+```tsx
+// 문제: 저장이 끝난 draft 행도 그대로 유지됨
+setAllRows((prev) => {
+  const drafts = prev.filter((r) => r.item_id === null); // ← 저장된 draft도 포함
+  return [...real, ...drafts];
+});
+```
+
+**흐름**:
+1. 사용자가 order_num + product_name 입력 → INSERT 성공
+2. `fetchOrders()` 호출 → DB에서 실제 행 로드
+3. 위 코드가 `item_id === null` 인 행을 모두 유지 → **저장된 draft 행이 계속 화면에 남아있음**
+4. 사용자가 다시 그 행을 편집하거나 포커스 이동 → INSERT 재시도
+5. `orders.order_num` unique constraint 위반 → `duplicate key value violates unique constraint` 에러 → 빨간색 표시
+
+**수정 코드** (`handleDraftCellChange` 성공 분기, ~line 697):
+
+```tsx
+// 수정 전
+setDraftErrors((prev) => { const s = new Set(prev); s.delete(row.rowKey); return s; });
+setToastType("success");
+setToast("주문을 저장했습니다.");
+await fetchOrders();
+
+// 수정 후 — fetchOrders 호출 전에 저장된 draft 행을 먼저 제거
+setDraftErrors((prev) => { const s = new Set(prev); s.delete(row.rowKey); return s; });
+setAllRows((prev) => prev.filter((r) => r.rowKey !== row.rowKey)); // ← 추가
+setToastType("success");
+setToast("주문을 저장했습니다.");
+await fetchOrders();
+```
+
+**핵심**: `fetchOrders`는 `item_id === null` 행을 모두 보존하는 구조이므로,
+성공한 draft 행은 `fetchOrders` 호출 전에 직접 `rowKey`로 제거해야 한다.
+
+---
+
+### Bug 2 — 주문번호만 입력해도 즉시 빨간색 표시 (UX)
+
+**원인 파일**: `components/orders-ag-grid-table.tsx`
+
+**원인 코드** (`handleDraftCellChange`, ~line 667):
+
+```tsx
+// 문제: order_num만 입력해도 touched=true → 빨간색
+if (!ready) {
+  const touched = updated.order_num !== "" || updated.product_name !== "";
+  if (touched) {
+    setDraftErrors((prev) => new Set<string>([...prev, row.rowKey]));
+  }
+  return;
+}
+```
+
+**흐름**:
+1. 사용자가 order_num 입력 → `touched = true` (product_name은 아직 빈 값)
+2. `draftErrors`에 rowKey 추가 → 행이 빨간색으로 변함
+3. 사용자는 "뭔가 오류가 났다"고 오해 → product_name을 입력해도 이미 심리적 혼란
+
+**수정 코드**:
+
+```tsx
+// 수정 후 — 미완성 상태에선 에러 표시 없이 조용히 대기
+if (!ready) {
+  return;
+}
+// 오류 표시는 실제 INSERT 실패 시에만 (아래 if ("error" in result) 블록에서만)
+```
+
+**원칙**: 에러 표시는 실제로 저장 시도(INSERT)가 실패했을 때만 한다.
+입력 도중의 미완성 상태는 에러가 아니라 단순히 "아직 입력 중"인 상태다.
+
+---
+
+### 수정 결과
+
+| | 수정 전 | 수정 후 |
+|---|---|---|
+| 올바른 8자리 order_num 입력 | 즉시 빨간색 (product_name 없어서) | 조용히 대기 (에러 없음) |
+| product_name까지 입력 완료 | INSERT → 성공 → draft 행 유지 → 재편집 시 duplicate key 에러 | INSERT → 성공 → draft 행 즉시 제거 → 실제 행으로 교체 |
+| INSERT 실패 (잘못된 값 등) | 빨간색 + toast | 빨간색 + toast (동일) |
