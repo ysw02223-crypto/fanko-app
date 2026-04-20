@@ -16,7 +16,6 @@ import {
 } from "ag-grid-community";
 import { FormulaBar, type FocusedCell } from "@/components/formula-bar";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { insertOrderHistoryAction } from "@/lib/actions/order-history";
@@ -24,7 +23,9 @@ import { flattenOrders } from "@/lib/orders-line-items-flatten";
 import { toGridRow, type OrderGridRow } from "@/lib/orders-ag-grid-types";
 import { DeliveryImportButton } from "@/components/delivery-import-button";
 import { ORDER_PROGRESS, PLATFORMS, ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES, PHOTO_STATUS } from "@/lib/schema";
+import type { OrderRow, OrderItemRow } from "@/lib/schema";
 import { insertDraftOrderAction, type InsertDraftOrderResult } from "@/lib/actions/orders";
+import { OrderEditForm } from "@/components/order-edit-form";
 import type { OrderWithNestedItems } from "@/lib/orders-line-items-flatten";
 import { useT } from "@/lib/i18n";
 import type { TranslationDict } from "@/lib/i18n";
@@ -95,21 +96,25 @@ const ITEM_DB_COL: Partial<Record<keyof OrderGridRow, string>> = {
   item_photo_sent: "photo_sent",
 };
 
-// ── 셀 렌더러: 주문번호 링크 ─────────────────────────────────────────────
-function OrderNumRenderer({ value, data }: ICellRendererParams<OrderGridRow, string>) {
+// ── Grid context 타입 ─────────────────────────────────────────────────────
+type GridContext = { onOrderClick: (orderNum: string) => void };
+
+// ── 셀 렌더러: 주문번호 (드로어 오픈) ────────────────────────────────────
+function OrderNumRenderer({ value, data, context }: ICellRendererParams<OrderGridRow, string>) {
   if (!value) return null;
-  // draft 행(item_id===null)은 편집 가능하므로 링크 없이 텍스트만
+  // draft 행(item_id===null)은 편집 가능하므로 버튼 없이 텍스트만
   if (data?.item_id === null) {
     return <span className="font-semibold">{value}</span>;
   }
+  const ctx = context as GridContext;
   return (
-    <Link
-      href={`/orders/${encodeURIComponent(value)}`}
+    <button
+      type="button"
       className="font-semibold text-violet-700 hover:underline dark:text-violet-400"
-      onClick={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); ctx.onOrderClick(value); }}
     >
       {value}
-    </Link>
+    </button>
   );
 }
 
@@ -390,6 +395,10 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const [isMobile, setIsMobile]         = useState(false);
   const [focusedCell, setFocusedCell]   = useState<FocusedCell | null>(null);
   const [draftErrors, setDraftErrors]   = useState<ReadonlySet<string>>(new Set<string>());
+  const [drawerOrderNum, setDrawerOrderNum] = useState<string | null>(null);
+  const [drawerOrder, setDrawerOrder]       = useState<OrderRow | null>(null);
+  const [drawerItems, setDrawerItems]       = useState<OrderItemRow[]>([]);
+  const [drawerLoading, setDrawerLoading]   = useState(false);
   const gridRef                         = useRef<AgGridReact<OrderGridRow>>(null);
   const savingDrafts                    = useRef<Set<string>>(new Set());
   const t                               = useT();
@@ -618,6 +627,40 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       });
     }
   }, [supabase]);
+
+  // ── 주문 상세 드로어 열기 ─────────────────────────────────────────────────
+  const openDrawer = useCallback(async (orderNum: string) => {
+    setDrawerOrderNum(orderNum);
+    setDrawerOrder(null);
+    setDrawerItems([]);
+    setDrawerLoading(true);
+    const [orderRes, itemsRes] = await Promise.all([
+      supabase.from("orders").select("*").eq("order_num", orderNum).maybeSingle(),
+      supabase.from("order_items").select("*").eq("order_num", orderNum).order("id", { ascending: true }),
+    ]);
+    setDrawerLoading(false);
+    if (orderRes.data) setDrawerOrder(orderRes.data as OrderRow);
+    if (itemsRes.data) setDrawerItems(itemsRes.data as OrderItemRow[]);
+  }, [supabase]);
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOrderNum(null);
+    setDrawerOrder(null);
+    setDrawerItems([]);
+  }, []);
+
+  const handleDrawerSave = useCallback(() => {
+    closeDrawer();
+    void fetchOrders();
+  }, [closeDrawer, fetchOrders]);
+
+  const handleDrawerDelete = useCallback(async () => {
+    if (!drawerOrderNum) return;
+    if (!confirm("이 주문과 연결된 상품 행까지 모두 삭제됩니다. 계속할까요?")) return;
+    await supabase.from("orders").delete().eq("order_num", drawerOrderNum);
+    closeDrawer();
+    void fetchOrders();
+  }, [drawerOrderNum, supabase, closeDrawer, fetchOrders]);
 
   // ── draft 행 추가 ────────────────────────────────────────────────────────
   const addDraftRow = useCallback(() => {
@@ -865,6 +908,65 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
 
   return (
     <>
+      {/* ── 주문 상세 드로어 ──────────────────────────────────────────────── */}
+      {drawerOrderNum && (
+        <div className="fixed inset-0 z-[150] flex justify-end">
+          {/* 배경 오버레이 */}
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            aria-label="닫기"
+            onClick={closeDrawer}
+          />
+          {/* 드로어 패널 */}
+          <div className="relative flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl dark:bg-zinc-900">
+            {/* 헤더 */}
+            <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-700">
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                주문 {drawerOrderNum}
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDrawerDelete}
+                  className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40"
+                >
+                  주문 삭제
+                </button>
+                <button
+                  type="button"
+                  onClick={closeDrawer}
+                  className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
+                  aria-label="닫기"
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            {/* 콘텐츠 */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              {drawerLoading ? (
+                <div className="flex h-40 items-center justify-center text-sm text-zinc-400">
+                  불러오는 중…
+                </div>
+              ) : drawerOrder ? (
+                <OrderEditForm
+                  order={drawerOrder}
+                  items={drawerItems}
+                  onSaveSuccess={handleDrawerSave}
+                />
+              ) : (
+                <div className="flex h-40 items-center justify-center text-sm text-red-500">
+                  주문을 불러오지 못했습니다.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toast ─────────────────────────────────────────────────────────── */}
       {toast && (
         <div
@@ -1074,6 +1176,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             getRowStyle={getRowStyle}
             onCellValueChanged={handleCellValueChanged}
             onCellFocused={handleCellFocused}
+            context={{ onOrderClick: openDrawer } satisfies GridContext}
             suppressClickEdit={false}
             undoRedoCellEditing={true}
             undoRedoCellEditingLimit={30}

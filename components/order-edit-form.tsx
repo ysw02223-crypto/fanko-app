@@ -92,9 +92,11 @@ function validateLines(lines: LineRow[]): string | null {
 export function OrderEditForm({
   order,
   items,
+  onSaveSuccess,
 }: {
   order: OrderRow;
   items: OrderItemRow[];
+  onSaveSuccess?: () => void;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -208,6 +210,7 @@ export function OrderEditForm({
 
       setFormSuccess("변경 사항을 저장했습니다.");
       router.refresh();
+      onSaveSuccess?.();
     });
   };
 
