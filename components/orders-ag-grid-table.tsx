@@ -11,6 +11,7 @@ import {
   type CellValueChangedEvent,
   type CellKeyDownEvent,
   type CellFocusedEvent,
+  type BodyScrollEvent,
   type GetRowIdParams,
   type RowClassParams,
   type RowStyle,
@@ -418,7 +419,10 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const [drawerLoading, setDrawerLoading]   = useState(false);
   const gridRef                         = useRef<AgGridReact<OrderGridRow>>(null);
   const savingDrafts                    = useRef<Set<string>>(new Set());
+  const lastScrollY                     = useRef<number>(0);
   const t                               = useT();
+
+  const [headerVisible, setHeaderVisible] = useState(true);
 
   // ── Undo / Redo 스택 ────────────────────────────────────────────────────
   const undoStack = useRef<UndoEntry[]>([]);
@@ -940,6 +944,23 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     [handleFormulaSave, setToast, setToastType],
   );
 
+  // ── 모바일 스크롤 시 헤더 자동 숨김/표시 ────────────────────────────────
+  const handleBodyScroll = useCallback(
+    (e: BodyScrollEvent<OrderGridRow>) => {
+      if (!isMobile) return;
+      const y = e.top;
+      if (y < 50) {
+        setHeaderVisible(true);
+        lastScrollY.current = y;
+        return;
+      }
+      const goingDown = y > lastScrollY.current;
+      setHeaderVisible(!goingDown);
+      lastScrollY.current = y;
+    },
+    [isMobile],
+  );
+
   // ── 셀 포커스 → FormulaBar 업데이트 ─────────────────────────────────────
   const handleCellFocused = useCallback(
     (event: CellFocusedEvent) => {
@@ -1149,7 +1170,13 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       {/* ── 통계 카드 + 필터바 (crm-subheader-portal로 portal) ──────────── */}
       {portalEl &&
         createPortal(
-          <>
+          <div
+            style={{
+              maxHeight: headerVisible ? "200px" : "0px",
+              overflow: "hidden",
+              transition: "max-height 0.25s ease",
+            }}
+          >
             {/* 통계 카드 (필터바 위) */}
             <div className="flex gap-2 border-b border-zinc-200 bg-white px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950">
               <StatCard label={t.stat_active_orders} value={stats.activeOrders} color="bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300" />
@@ -1260,7 +1287,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                 .replace("{lines}", String(rowData.length))}
             </p>
           </div>
-          </>,
+          </div>,
           portalEl,
         )}
 
@@ -1286,6 +1313,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             onCellValueChanged={handleCellValueChanged}
             onCellFocused={handleCellFocused}
             onCellKeyDown={handleCellKeyDown}
+            onBodyScroll={handleBodyScroll}
             context={{ onOrderClick: openDrawer } satisfies GridContext}
             suppressClickEdit={false}
             undoRedoCellEditing={true}
