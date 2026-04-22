@@ -421,7 +421,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const lastScrollY                     = useRef<number>(0);
   const t                               = useT();
 
-  const [headerVisible, setHeaderVisible] = useState(true);
+  const [statsVisible, setStatsVisible] = useState(true);
 
   // ── Undo / Redo 스택 ────────────────────────────────────────────────────
   const undoStack = useRef<UndoEntry[]>([]);
@@ -954,7 +954,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       const y = e.touches[0].clientY;
       const dy = lastScrollY.current - y; // 양수 = 아래로 스크롤
       if (Math.abs(dy) < 5) return;
-      setHeaderVisible(dy < 0); // 위로 스크롤이면 헤더 표시
+      setStatsVisible(dy < 0); // 위로 스크롤이면 통계 표시
       lastScrollY.current = y;
     },
     [isMobile],
@@ -1169,140 +1169,145 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       {/* ── 통계 카드 + 필터바 (crm-subheader-portal로 portal) ──────────── */}
       {portalEl &&
         createPortal(
-          <div
-            style={{
-              maxHeight: headerVisible ? "200px" : "0px",
-              overflow: "hidden",
-              transition: "max-height 0.25s ease",
-            }}
-          >
-            {/* 통계 카드 (필터바 위) */}
-            <div className="flex gap-2 border-b border-zinc-200 bg-white px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950">
-              <StatCard label={t.stat_active_orders} value={stats.activeOrders} color="bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300" />
-              <StatCard label={t.stat_total_lines}   value={stats.totalLines}   color="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" />
-              <StatCard label={t.stat_in_delivery}   value={stats.inDelivery}   color="bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300" />
-              <StatCard label={t.stat_with_balance}  value={stats.withBalance}  color="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300" />
+          <>
+            {/* 통계 카드 — 모바일 스크롤 시 접힘 */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateRows: statsVisible ? "1fr" : "0fr",
+                transition: "grid-template-rows 0.3s ease",
+              }}
+            >
+              <div style={{ overflow: "hidden" }}>
+                <div className="flex gap-2 border-b border-zinc-200 bg-white px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-950">
+                  <StatCard label={t.stat_active_orders} value={stats.activeOrders} color="bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300" />
+                  <StatCard label={t.stat_total_lines}   value={stats.totalLines}   color="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" />
+                  <StatCard label={t.stat_in_delivery}   value={stats.inDelivery}   color="bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300" />
+                  <StatCard label={t.stat_with_balance}  value={stats.withBalance}  color="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300" />
+                </div>
+              </div>
             </div>
-          {/* 필터바 */}
-          <div className="w-full border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="flex flex-wrap items-center gap-2">
-              <FilterDropdown
-                label={t.filter_progress}
-                field="progress"
-                value={filters.progress}
-                options={[
-                  { label: t.filter_all, value: "" },
-                  ...ORDER_PROGRESS.map((p) => ({ label: p, value: p })),
-                ]}
-                openFilter={openFilter}
-                setOpenFilter={setOpenFilter}
-                onChange={(v) => setFilters((f) => ({ ...f, progress: v }))}
-              />
-              <FilterDropdown
-                label={t.filter_platform}
-                field="platform"
-                value={filters.platform}
-                options={[
-                  { label: t.filter_all, value: "" },
-                  ...PLATFORMS.map((p) => ({ label: p, value: p })),
-                ]}
-                openFilter={openFilter}
-                setOpenFilter={setOpenFilter}
-                onChange={(v) => setFilters((f) => ({ ...f, platform: v }))}
-              />
-              <FilterDropdown
-                label={t.filter_set_type}
-                field="setType"
-                value={filters.setType}
-                options={[
-                  { label: t.filter_all, value: "" },
-                  { label: "Single", value: "Single" },
-                  { label: "SET", value: "SET" },
-                ]}
-                openFilter={openFilter}
-                setOpenFilter={setOpenFilter}
-                onChange={(v) => setFilters((f) => ({ ...f, setType: v }))}
-              />
-              <FilterDropdown
-                label={t.filter_gift}
-                field="gift"
-                value={filters.gift}
-                options={[
-                  { label: t.filter_all, value: "" },
-                  { label: "no", value: "no" },
-                  { label: "ask", value: "ask" },
-                ]}
-                openFilter={openFilter}
-                setOpenFilter={setOpenFilter}
-                onChange={(v) => setFilters((f) => ({ ...f, gift: v }))}
-              />
-              <FilterDropdown
-                label={t.filter_photo}
-                field="photoSent"
-                value={filters.photoSent}
-                options={[
-                  { label: t.filter_all, value: "" },
-                  ...PHOTO_STATUS.map((s) => ({ label: s, value: s })),
-                ]}
-                openFilter={openFilter}
-                setOpenFilter={setOpenFilter}
-                onChange={(v) => setFilters((f) => ({ ...f, photoSent: v }))}
-              />
-              <FilterDropdown
-                label={t.filter_balance}
-                field="hasBalance"
-                value={filters.hasBalance}
-                options={[
-                  { label: t.filter_all, value: "" },
-                  { label: t.filter_has_balance, value: "yes" },
-                  { label: t.filter_no_balance, value: "no" },
-                ]}
-                openFilter={openFilter}
-                setOpenFilter={setOpenFilter}
-                onChange={(v) => setFilters((f) => ({ ...f, hasBalance: v }))}
-              />
-              {hasActiveFilter && (
+
+            {/* 필터바 — 항상 노출 */}
+            <div className="w-full border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+              <div className="flex flex-wrap items-center gap-2">
+                <FilterDropdown
+                  label={t.filter_progress}
+                  field="progress"
+                  value={filters.progress}
+                  options={[
+                    { label: t.filter_all, value: "" },
+                    ...ORDER_PROGRESS.map((p) => ({ label: p, value: p })),
+                  ]}
+                  openFilter={openFilter}
+                  setOpenFilter={setOpenFilter}
+                  onChange={(v) => setFilters((f) => ({ ...f, progress: v }))}
+                />
+                <FilterDropdown
+                  label={t.filter_platform}
+                  field="platform"
+                  value={filters.platform}
+                  options={[
+                    { label: t.filter_all, value: "" },
+                    ...PLATFORMS.map((p) => ({ label: p, value: p })),
+                  ]}
+                  openFilter={openFilter}
+                  setOpenFilter={setOpenFilter}
+                  onChange={(v) => setFilters((f) => ({ ...f, platform: v }))}
+                />
+                <FilterDropdown
+                  label={t.filter_set_type}
+                  field="setType"
+                  value={filters.setType}
+                  options={[
+                    { label: t.filter_all, value: "" },
+                    { label: "Single", value: "Single" },
+                    { label: "SET", value: "SET" },
+                  ]}
+                  openFilter={openFilter}
+                  setOpenFilter={setOpenFilter}
+                  onChange={(v) => setFilters((f) => ({ ...f, setType: v }))}
+                />
+                <FilterDropdown
+                  label={t.filter_gift}
+                  field="gift"
+                  value={filters.gift}
+                  options={[
+                    { label: t.filter_all, value: "" },
+                    { label: "no", value: "no" },
+                    { label: "ask", value: "ask" },
+                  ]}
+                  openFilter={openFilter}
+                  setOpenFilter={setOpenFilter}
+                  onChange={(v) => setFilters((f) => ({ ...f, gift: v }))}
+                />
+                <FilterDropdown
+                  label={t.filter_photo}
+                  field="photoSent"
+                  value={filters.photoSent}
+                  options={[
+                    { label: t.filter_all, value: "" },
+                    ...PHOTO_STATUS.map((s) => ({ label: s, value: s })),
+                  ]}
+                  openFilter={openFilter}
+                  setOpenFilter={setOpenFilter}
+                  onChange={(v) => setFilters((f) => ({ ...f, photoSent: v }))}
+                />
+                <FilterDropdown
+                  label={t.filter_balance}
+                  field="hasBalance"
+                  value={filters.hasBalance}
+                  options={[
+                    { label: t.filter_all, value: "" },
+                    { label: t.filter_has_balance, value: "yes" },
+                    { label: t.filter_no_balance, value: "no" },
+                  ]}
+                  openFilter={openFilter}
+                  setOpenFilter={setOpenFilter}
+                  onChange={(v) => setFilters((f) => ({ ...f, hasBalance: v }))}
+                />
+                {hasActiveFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setFilters(INITIAL_FILTERS)}
+                    className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                  >
+                    {t.filter_reset}
+                  </button>
+                )}
+                <DeliveryImportButton onImportDone={fetchOrders} />
                 <button
                   type="button"
-                  onClick={() => setFilters(INITIAL_FILTERS)}
-                  className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                  title="되돌리기 (Ctrl+Z)"
+                  onClick={handleUndo}
+                  className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-1.5 text-zinc-600 shadow-sm hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 >
-                  {t.filter_reset}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M3 13C5 8 9 5 14 5a9 9 0 0 1 0 18c-4 0-7.4-2-9-5"/></svg>
                 </button>
-              )}
-              <DeliveryImportButton onImportDone={fetchOrders} />
-              <button
-                type="button"
-                title="되돌리기 (Ctrl+Z)"
-                onClick={handleUndo}
-                className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-1.5 text-zinc-600 shadow-sm hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M3 13C5 8 9 5 14 5a9 9 0 0 1 0 18c-4 0-7.4-2-9-5"/></svg>
-              </button>
-              <button
-                type="button"
-                title="다시 실행 (Ctrl+Y)"
-                onClick={handleRedo}
-                className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-1.5 text-zinc-600 shadow-sm hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M21 13c-2 5-6 8-11 8a9 9 0 0 1 0-18c4 0 7.4 2 9 5"/></svg>
-              </button>
-              <input
-                type="text"
-                placeholder={t.orders_search_placeholder}
-                className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-                style={{ minWidth: "220px" }}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+                <button
+                  type="button"
+                  title="다시 실행 (Ctrl+Y)"
+                  onClick={handleRedo}
+                  className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-1.5 text-zinc-600 shadow-sm hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M21 13c-2 5-6 8-11 8a9 9 0 0 1 0-18c4 0 7.4 2 9 5"/></svg>
+                </button>
+                <input
+                  type="text"
+                  placeholder={t.orders_search_placeholder}
+                  className="ml-auto rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  style={{ minWidth: "220px" }}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {t.orders_counter
+                  .replace("{orders}", String(orderCount))
+                  .replace("{lines}", String(rowData.length))}
+              </p>
             </div>
-            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-              {t.orders_counter
-                .replace("{orders}", String(orderCount))
-                .replace("{lines}", String(rowData.length))}
-            </p>
-          </div>
-          </div>,
+          </>,
           portalEl,
         )}
 
