@@ -9,6 +9,7 @@ import {
   type ValueFormatterParams,
   type ICellRendererParams,
   type CellValueChangedEvent,
+  type CellKeyDownEvent,
   type CellFocusedEvent,
   type GetRowIdParams,
   type RowClassParams,
@@ -385,6 +386,14 @@ const INITIAL_FILTERS: FilterState = {
   gift: "", photoSent: "", hasBalance: "",
 };
 
+// ── Undo/Redo 스택 엔트리 타입 ──────────────────────────────────────────────
+type UndoEntry = {
+  field: keyof OrderGridRow;
+  row: OrderGridRow;
+  oldValue: string | number | null;
+  newValue: string | number | null;
+};
+
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
 export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNestedItems[] }) {
   const [allRows, setAllRows]   = useState<OrderGridRow[]>(() =>
@@ -411,6 +420,14 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const savingDrafts                    = useRef<Set<string>>(new Set());
   const t                               = useT();
 
+  // ── Undo / Redo 스택 ────────────────────────────────────────────────────
+  const undoStack = useRef<UndoEntry[]>([]);
+  const redoStack = useRef<UndoEntry[]>([]);
+
+  // ── 셀 클립보드 ─────────────────────────────────────────────────────────
+  type ClipboardEntry = { field: keyof OrderGridRow; value: string | number | null };
+  const clipboardRef = useRef<ClipboardEntry | null>(null);
+
   const colDefs = useMemo(() => buildColDefs(t), [t]);
 
   const defaultColDef = useMemo<ColDef<OrderGridRow>>(
@@ -432,6 +449,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   useEffect(() => {
     setPortalEl(document.getElementById("crm-subheader-portal"));
   }, []);
+
 
   // ── 외부 클릭 시 필터 드롭다운 닫기 ─────────────────────────────────────
   useEffect(() => {
@@ -531,6 +549,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       oldValue: string | number | null,
       newValue: string | number | null,
       revertFn: () => void,
+      pushMode: "normal" | "undo" | "redo" = "normal",
     ) => {
       const oldVal = String(oldValue ?? "");
       const newVal = String(newValue ?? "");
@@ -614,6 +633,20 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
           ...prev.slice(0, 29),
         ]);
 
+        if (pushMode === "normal") {
+          undoStack.current.push({ field, row, oldValue, newValue });
+          redoStack.current = [];
+          if (undoStack.current.length > 50) undoStack.current.shift();
+        } else if (pushMode === "undo") {
+          // undo 완료 → redo 스택에 원래 방향(A→B)으로 push
+          redoStack.current.push({ field, row, oldValue: newValue, newValue: oldValue });
+          if (redoStack.current.length > 50) redoStack.current.shift();
+        } else if (pushMode === "redo") {
+          // redo 완료 → undo 스택에 다시 push
+          undoStack.current.push({ field, row, oldValue, newValue });
+          if (undoStack.current.length > 50) undoStack.current.shift();
+        }
+
         setToastType("success");
         setToast(t.toast_saved);
       } catch (err) {
@@ -624,6 +657,36 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     },
     [supabase, t],
   );
+
+  // ── Ctrl+Z / Ctrl+Y (Undo / Redo) ──────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      // 텍스트 입력 중(셀 편집 중)이면 브라우저 기본 동작에 맡김
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "z") {
+        const entry = undoStack.current.pop();
+        if (!entry) return;
+        e.preventDefault();
+        void saveFieldChange(entry.field, entry.row, entry.newValue, entry.oldValue, () => {
+          // 실패 시 스택 복원
+          undoStack.current.push(entry);
+        }, "undo");
+      } else if (e.key === "y") {
+        const entry = redoStack.current.pop();
+        if (!entry) return;
+        e.preventDefault();
+        void saveFieldChange(entry.field, entry.row, entry.oldValue, entry.newValue, () => {
+          // 실패 시 스택 복원
+          redoStack.current.push(entry);
+        }, "redo");
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [saveFieldChange]);
 
   // ── 데이터 새로고침 (배송 import / draft 저장 후 호출, draft 행 보존) ──────
   const fetchOrders = useCallback(async () => {
@@ -844,6 +907,37 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       setFocusedCell(null);
     },
     [saveFieldChange, handleDraftCellChange],
+  );
+
+  // ── 셀 Ctrl+C / Ctrl+V ──────────────────────────────────────────────────
+  const handleCellKeyDown = useCallback(
+    (params: CellKeyDownEvent<OrderGridRow>) => {
+      const e = params.event;
+      if (!(e instanceof KeyboardEvent)) return;
+      if (!e.ctrlKey && !e.metaKey) return;
+
+      const field = params.column.getColId() as keyof OrderGridRow;
+      const rowData = params.data;
+      if (!rowData) return;
+
+      if (e.key === "c") {
+        const raw = params.value;
+        const value = raw === null || raw === undefined
+          ? null
+          : (typeof raw === "number" ? raw : String(raw));
+        clipboardRef.current = { field, value };
+        setToastType("success");
+        setToast("복사됨");
+        // AG Grid 기본 시스템 클립보드 복사도 함께 동작 (preventDefault 안 함)
+      } else if (e.key === "v") {
+        const clip = clipboardRef.current;
+        if (!clip) return;
+        if (clip.field !== field) return;
+        e.preventDefault();
+        handleFormulaSave(field, rowData, clip.value);
+      }
+    },
+    [handleFormulaSave, setToast, setToastType],
   );
 
   // ── 셀 포커스 → FormulaBar 업데이트 ─────────────────────────────────────
@@ -1191,6 +1285,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             getRowStyle={getRowStyle}
             onCellValueChanged={handleCellValueChanged}
             onCellFocused={handleCellFocused}
+            onCellKeyDown={handleCellKeyDown}
             context={{ onOrderClick: openDrawer } satisfies GridContext}
             suppressClickEdit={false}
             undoRedoCellEditing={true}

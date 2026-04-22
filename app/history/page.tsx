@@ -7,13 +7,15 @@ export default async function HistoryPage() {
   const history = await getOrderHistory();
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <HistoryPageHeader count={history.length} />
-        <HistoryRefreshButton />
-      </div>
+    <div className="h-full overflow-y-auto">
+      <div className="flex flex-col gap-6 px-5 pt-4 pb-8">
+        <div className="flex items-center justify-between">
+          <HistoryPageHeader count={history.length} />
+          <HistoryRefreshButton />
+        </div>
 
-      <HistoryTable rows={history} />
+        <HistoryTable rows={history} />
+      </div>
     </div>
   );
 }

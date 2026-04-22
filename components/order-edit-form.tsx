@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 
 const COL_W = {
   category: 120,
+  productName: 400,
   option: 200,
   setType: 110,
   qty: 64,
@@ -222,8 +223,8 @@ export function OrderEditForm({
   const td =
     "border-b border-r border-b-gray-100 border-r-gray-100 px-2 py-1.5 align-middle dark:border-b-zinc-800 dark:border-r-zinc-800";
   const tdLast = "border-b border-b-gray-100 px-2 py-1.5 align-middle text-center dark:border-b-zinc-800";
-  const cellInput = `${inputClass} !py-1.5 text-sm`;
-  const cellSelect = `${selectClass} !py-1.5 text-sm`;
+  const cellInput = `${inputClass} !py-1.5 text-sm !bg-inherit !border-zinc-400`;
+  const cellSelect = `${selectClass} !py-1.5 text-sm !bg-inherit !border-zinc-400`;
   const compactInput =
     "w-full rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm outline-none ring-emerald-500/40 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100";
   const compactSelect = compactInput;
@@ -363,7 +364,7 @@ export function OrderEditForm({
           >
             <colgroup>
               <col style={wPx(COL_W.category)} />
-              <col />
+              <col style={wPx(COL_W.productName)} />
               <col style={wPx(COL_W.option)} />
               <col style={wPx(COL_W.setType)} />
               <col style={wPx(COL_W.qty)} />
@@ -388,8 +389,8 @@ export function OrderEditForm({
               </tr>
             </thead>
             <tbody>
-              {lines.map((line) => (
-                <tr key={line.id}>
+              {lines.map((line, idx) => (
+                <tr key={line.id} className={idx % 2 === 0 ? "bg-white dark:bg-zinc-950" : "bg-zinc-200 dark:bg-zinc-800"}>
                   <td className={td}>
                     <select
                       className={`${cellSelect} w-full text-left`}

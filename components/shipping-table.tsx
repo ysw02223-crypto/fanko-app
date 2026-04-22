@@ -958,7 +958,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
         )}
 
       {/* 제목 */}
-      <div className="mb-1 flex flex-col gap-1">
+      <div className="mb-1 flex flex-col gap-1 px-5 pt-4">
         <h1 className="text-2xl font-semibold tracking-tight">{t.page_shipping}</h1>
       </div>
 
