@@ -61,7 +61,7 @@ export function toGridRow(flat: FlatOrderItemRow): OrderGridRow {
     prepayment_rub: prepayRub,
     extra_payment_rub: priceRub - prepayRub,
     krw: item?.krw != null ? Number(item.krw) : null,
-    item_progress: item?.progress ?? null,
+    item_progress: item?.progress ?? order.progress,
     item_gift: item?.gift ?? null,
     item_photo_sent: item?.photo_sent ?? null,
     shipping_fee: order.shipping_fee,

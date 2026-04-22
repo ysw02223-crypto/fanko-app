@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useT } from "@/lib/i18n";
 
 // ── 네비게이션 아이템 타입 ────────────────────────────────────────────────
 type NavItem = {
@@ -11,20 +12,13 @@ type NavItem = {
   disabled?: boolean;
 };
 
-// ── 섹션별 nav 정의 ───────────────────────────────────────────────────────
-const ORDER_NAV: NavItem[] = [
-  { label: "주문 목록",  href: "/orders",      icon: <IconList /> },
-  { label: "신규 주문",  href: "/orders/new",  icon: <IconPlus /> },
-  { label: "배송 관리",  href: "/shipping",    icon: <IconTruck /> },
-  { label: "변경 이력",  href: "/history",     icon: <IconClock /> },
-];
-
-const FINANCE_NAV: NavItem[] = [
-  { label: "재무 대시보드", href: "/finance",           icon: <IconChart /> },
-  { label: "수입 내역",    href: "/finance/income",     icon: <IconArrowUp /> },
-  { label: "지출 내역",    href: "/finance/expense",    icon: <IconArrowDown /> },
-  { label: "환전 환율",    href: "/finance/exchange",   icon: <IconExchange /> },
-];
+// ── 텍스트 길이에 따른 폰트 클래스 ──────────────────────────────────────
+function fitTextClass(label: string): string {
+  const len = label.length;
+  if (len >= 18) return "text-[11px]";
+  if (len >= 14) return "text-xs";
+  return "text-sm";
+}
 
 // ── 메인 SidebarNav ───────────────────────────────────────────────────────
 export function SidebarNav({
@@ -34,7 +28,22 @@ export function SidebarNav({
   onNavigate?: () => void;
   collapsed?: boolean;
 }) {
+  const t = useT();
   const pathname = usePathname();
+
+  const ORDER_NAV: NavItem[] = [
+    { label: t.nav_order_list, href: "/orders",     icon: <IconList /> },
+    { label: t.nav_order_new,  href: "/orders/new", icon: <IconPlus /> },
+    { label: t.nav_shipping,   href: "/shipping",   icon: <IconTruck /> },
+    { label: t.nav_history,    href: "/history",    icon: <IconClock /> },
+  ];
+
+  const FINANCE_NAV: NavItem[] = [
+    { label: t.nav_finance_dashboard, href: "/finance",          icon: <IconChart /> },
+    { label: t.nav_income_list,       href: "/finance/income",   icon: <IconArrowUp /> },
+    { label: t.nav_expense_list,      href: "/finance/expense",  icon: <IconArrowDown /> },
+    { label: t.nav_exchange,          href: "/finance/exchange", icon: <IconExchange /> },
+  ];
 
   function isActive(href: string): boolean {
     if (href === "/orders") {
@@ -65,7 +74,7 @@ export function SidebarNav({
 
   return (
     <div className="flex flex-col">
-      <NavSection label="러시아 주문">
+      <NavSection label={t.nav_russia_orders}>
         {ORDER_NAV.map((item) => (
           <NavItemRow
             key={item.href}
@@ -76,7 +85,7 @@ export function SidebarNav({
         ))}
       </NavSection>
 
-      <NavSection label="재무">
+      <NavSection label={t.nav_finance}>
         {FINANCE_NAV.map((item) => (
           <NavItemRow
             key={item.href}
@@ -131,7 +140,7 @@ function NavItemRow({
         }
       >
         <span className="shrink-0">{item.icon}</span>
-        {!collapsed && item.label}
+        {!collapsed && <span className={fitTextClass(item.label)}>{item.label}</span>}
       </span>
     );
   }
@@ -157,14 +166,14 @@ function NavItemRow({
     <Link
       href={item.href}
       onClick={onNavigate}
-      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors ${
         active
           ? "bg-violet-900/50 font-semibold text-violet-300"
           : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
       }`}
     >
       <span className="shrink-0">{item.icon}</span>
-      {item.label}
+      <span className={fitTextClass(item.label)}>{item.label}</span>
     </Link>
   );
 }

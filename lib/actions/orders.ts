@@ -101,6 +101,7 @@ export async function createOrderWithItemsAction(
     prepayment_rub: number;
     extra_payment_rub: number;
     krw: null;
+    progress: OrderProgress;
   }> = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -142,6 +143,7 @@ export async function createOrderWithItemsAction(
       prepayment_rub,
       extra_payment_rub,
       krw: null,
+      progress: "PAY",
     });
   }
 
@@ -367,7 +369,8 @@ export async function insertDraftOrderAction(
       price_rub,
       prepayment_rub,
       extra_payment_rub: price_rub - prepayment_rub,
-      krw: null,
+      krw:               null,
+      progress:          "PAY" as OrderProgress,
     })
     .select("id")
     .single();

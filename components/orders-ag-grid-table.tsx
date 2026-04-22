@@ -23,7 +23,7 @@ import { flattenOrders } from "@/lib/orders-line-items-flatten";
 import { toGridRow, type OrderGridRow } from "@/lib/orders-ag-grid-types";
 import { DeliveryImportButton } from "@/components/delivery-import-button";
 import { ORDER_PROGRESS, PLATFORMS, ORDER_ROUTES, PRODUCT_CATEGORIES, SET_TYPES, PHOTO_STATUS } from "@/lib/schema";
-import type { OrderRow, OrderItemRow } from "@/lib/schema";
+import type { OrderRow, OrderItemRow, OrderProgress } from "@/lib/schema";
 import { insertDraftOrderAction, type InsertDraftOrderResult } from "@/lib/actions/orders";
 import { OrderEditForm } from "@/components/order-edit-form";
 import type { OrderWithNestedItems } from "@/lib/orders-line-items-flatten";
@@ -566,6 +566,13 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             .eq("id", row.item_id)
             .eq("order_num", row.order_num);
           if (error) throw new Error(error.message);
+
+          if (field === "item_progress" && newVal) {
+            await supabase
+              .from("orders")
+              .update({ progress: newVal as OrderProgress })
+              .eq("order_num", row.order_num);
+          }
 
           setAllRows((prev) =>
             prev.map((r) => {
