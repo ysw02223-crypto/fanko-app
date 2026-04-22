@@ -1276,17 +1276,17 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                 type="button"
                 title="되돌리기 (Ctrl+Z)"
                 onClick={handleUndo}
-                className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-600 shadow-sm hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-1.5 text-zinc-600 shadow-sm hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
-                ↩ 되돌리기
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M3 13C5 8 9 5 14 5a9 9 0 0 1 0 18c-4 0-7.4-2-9-5"/></svg>
               </button>
               <button
                 type="button"
                 title="다시 실행 (Ctrl+Y)"
                 onClick={handleRedo}
-                className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-600 shadow-sm hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-1.5 text-zinc-600 shadow-sm hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
               >
-                ↪ 다시실행
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M21 13c-2 5-6 8-11 8a9 9 0 0 1 0-18c4 0 7.4 2 9 5"/></svg>
               </button>
               <input
                 type="text"
