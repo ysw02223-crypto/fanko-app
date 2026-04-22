@@ -162,31 +162,36 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "order_num",
       headerName: t.col_order_num,
-      width: 120,
+      width: 100,
       pinned: "left" as const,
       editable: (params) => params.data?.item_id === null,
       cellRenderer: OrderNumRenderer,
+      cellStyle: { textAlign: "center" },
+      headerClass: "ag-header-cell-center",
     },
     {
       field: "date",
       headerName: t.col_date,
-      width: 110,
+      width: 100,
       pinned: "left" as const,
       editable: true,
       cellEditor: "agDateStringCellEditor",
+      cellStyle: { textAlign: "center" },
+      headerClass: "ag-header-cell-center",
     },
     // ── 상품 정보 ─────────────────────────────────────────────────────────
     {
       field: "product_name",
       headerName: t.col_product_name,
-      width: 200,
+      width: 400,
+      pinned: "left" as const,
       editable: true,
       cellEditor: "agTextCellEditor",
     },
     {
       field: "product_option",
       headerName: t.col_option,
-      width: 150,
+      width: 180,
       editable: true,
       cellEditor: "agTextCellEditor",
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
@@ -215,7 +220,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "item_gift",
       headerName: t.col_gift,
-      width: 75,
+      width: 70,
       editable: true,
       ...selectOpts(["no", "ask"] as const),
       cellStyle: (params) =>
@@ -259,7 +264,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "purchase_channel",
       headerName: t.col_channel,
-      width: 100,
+      width: 80,
       editable: true,
       cellEditor: "agTextCellEditor",
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string | null>) =>
@@ -279,7 +284,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "quantity",
       headerName: t.col_quantity,
-      width: 65,
+      width: 60,
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 1, precision: 0 },
@@ -288,7 +293,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "price_rub",
       headerName: t.col_price_rub,
-      width: 105,
+      width: 90,
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
@@ -298,7 +303,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "krw",
       headerName: t.col_krw,
-      width: 115,
+      width: 90,
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
@@ -308,7 +313,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "prepayment_rub",
       headerName: t.col_prepay_rub,
-      width: 105,
+      width: 90,
       editable: true,
       cellEditor: "agNumberCellEditor",
       cellEditorParams: { min: 0 },
@@ -318,7 +323,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "extra_payment_rub",
       headerName: t.col_balance_rub,
-      width: 105,
+      width: 90,
       editable: false,
       valueFormatter: rubFormatter,
       cellStyle: (params) =>
@@ -328,7 +333,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "shipping_fee",
       headerName: t.col_shipping_fee,
-      width: 95,
+      width: 90,
       editable: false,
       valueFormatter: krwFormatter,
     },
@@ -336,7 +341,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     {
       field: "applied_weight",
       headerName: t.col_weight,
-      width: 90,
+      width: 80,
       editable: false,
       valueFormatter: kgFormatter,
     },

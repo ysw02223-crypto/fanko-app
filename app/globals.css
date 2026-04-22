@@ -45,3 +45,6 @@ body {
 .ag-header-cell.ag-header-cell-last-left-pinned {
   border-right: 2px solid #a1a1aa !important;
 }
+.ag-header-cell-center .ag-header-cell-label {
+  justify-content: center;
+}
