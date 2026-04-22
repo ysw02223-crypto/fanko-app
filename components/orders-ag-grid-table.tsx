@@ -11,7 +11,6 @@ import {
   type CellValueChangedEvent,
   type CellKeyDownEvent,
   type CellFocusedEvent,
-  type BodyScrollEvent,
   type GetRowIdParams,
   type RowClassParams,
   type RowStyle,
@@ -944,11 +943,17 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     [handleFormulaSave, setToast, setToastType],
   );
 
-  // ── 모바일 스크롤 시 헤더 자동 숨김/표시 ────────────────────────────────
-  const handleBodyScroll = useCallback(
-    (e: BodyScrollEvent<OrderGridRow>) => {
-      if (!isMobile) return;
-      const y = e.top;
+  // ── 모바일 스크롤 시 헤더 자동 숨김/표시 (네이티브 DOM scroll) ────────────
+  useEffect(() => {
+    let viewport: HTMLElement | null = null;
+
+    const onScroll = () => {
+      if (!viewport) return;
+      if (window.innerWidth >= 1024) {
+        setHeaderVisible(true);
+        return;
+      }
+      const y = viewport.scrollTop;
       if (y < 50) {
         setHeaderVisible(true);
         lastScrollY.current = y;
@@ -957,9 +962,23 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       const goingDown = y > lastScrollY.current;
       setHeaderVisible(!goingDown);
       lastScrollY.current = y;
-    },
-    [isMobile],
-  );
+    };
+
+    const attach = () => {
+      viewport = document.querySelector<HTMLElement>(".ag-body-viewport");
+      if (!viewport) return false;
+      viewport.addEventListener("scroll", onScroll, { passive: true });
+      return true;
+    };
+
+    // 그리드가 아직 렌더링 전일 수 있으므로 실패 시 한 번 재시도
+    if (!attach()) {
+      const timer = setTimeout(attach, 300);
+      return () => clearTimeout(timer);
+    }
+
+    return () => viewport?.removeEventListener("scroll", onScroll);
+  }, []);
 
   // ── 셀 포커스 → FormulaBar 업데이트 ─────────────────────────────────────
   const handleCellFocused = useCallback(
@@ -1329,7 +1348,6 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
             onCellValueChanged={handleCellValueChanged}
             onCellFocused={handleCellFocused}
             onCellKeyDown={handleCellKeyDown}
-            onBodyScroll={handleBodyScroll}
             context={{ onOrderClick: openDrawer } satisfies GridContext}
             suppressClickEdit={false}
             undoRedoCellEditing={true}
