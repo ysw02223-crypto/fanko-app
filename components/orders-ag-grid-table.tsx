@@ -662,35 +662,35 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     [supabase, t],
   );
 
-  // ── Ctrl+Z / Ctrl+Y (Undo / Redo) ──────────────────────────────────────
+  // ── Undo / Redo 실행 함수 (버튼 + 키보드 공유) ──────────────────────────
+  const handleUndo = useCallback(() => {
+    const entry = undoStack.current.pop();
+    if (!entry) return;
+    void saveFieldChange(entry.field, entry.row, entry.newValue, entry.oldValue, () => {
+      undoStack.current.push(entry);
+    }, "undo");
+  }, [saveFieldChange]);
+
+  const handleRedo = useCallback(() => {
+    const entry = redoStack.current.pop();
+    if (!entry) return;
+    void saveFieldChange(entry.field, entry.row, entry.oldValue, entry.newValue, () => {
+      redoStack.current.push(entry);
+    }, "redo");
+  }, [saveFieldChange]);
+
+  // ── Ctrl+Z / Ctrl+Y 키 바인딩 ────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
-      // 텍스트 입력 중(셀 편집 중)이면 브라우저 기본 동작에 맡김
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-
-      if (e.key === "z") {
-        const entry = undoStack.current.pop();
-        if (!entry) return;
-        e.preventDefault();
-        void saveFieldChange(entry.field, entry.row, entry.newValue, entry.oldValue, () => {
-          // 실패 시 스택 복원
-          undoStack.current.push(entry);
-        }, "undo");
-      } else if (e.key === "y") {
-        const entry = redoStack.current.pop();
-        if (!entry) return;
-        e.preventDefault();
-        void saveFieldChange(entry.field, entry.row, entry.oldValue, entry.newValue, () => {
-          // 실패 시 스택 복원
-          redoStack.current.push(entry);
-        }, "redo");
-      }
+      if (e.key === "z") { e.preventDefault(); handleUndo(); }
+      else if (e.key === "y") { e.preventDefault(); handleRedo(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [saveFieldChange]);
+  }, [handleUndo, handleRedo]);
 
   // ── 데이터 새로고침 (배송 import / draft 저장 후 호출, draft 행 보존) ──────
   const fetchOrders = useCallback(async () => {
@@ -1272,6 +1272,22 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
                 </button>
               )}
               <DeliveryImportButton onImportDone={fetchOrders} />
+              <button
+                type="button"
+                title="되돌리기 (Ctrl+Z)"
+                onClick={handleUndo}
+                className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-600 shadow-sm hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                ↩ 되돌리기
+              </button>
+              <button
+                type="button"
+                title="다시 실행 (Ctrl+Y)"
+                onClick={handleRedo}
+                className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-600 shadow-sm hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                ↪ 다시실행
+              </button>
               <input
                 type="text"
                 placeholder={t.orders_search_placeholder}
