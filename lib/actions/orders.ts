@@ -413,6 +413,120 @@ export async function insertDraftOrderAction(
   return { itemId };
 }
 
+// ── 엑셀 대량 주문 업로드 ──────────────────────────────────────────────────
+
+export type BulkImportResult = {
+  inserted: number;
+  skipped: string[];
+  errors: string[];
+};
+
+export async function bulkImportOrdersAction(
+  orders: import("@/lib/excel-order-parser").ParsedOrder[],
+): Promise<BulkImportResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { inserted: 0, skipped: [], errors: ["로그인이 필요합니다."] };
+
+  const orderNums = orders.map((o) => o.order_num);
+
+  // 이미 존재하는 주문번호 일괄 조회 (쿼리 1번)
+  const { data: existing } = await supabase
+    .from("orders")
+    .select("order_num")
+    .in("order_num", orderNums);
+
+  const existingSet = new Set((existing ?? []).map((r) => r.order_num as string));
+  const toInsert = orders.filter((o) => !existingSet.has(o.order_num));
+  const skipped  = orders.filter((o) =>  existingSet.has(o.order_num)).map((o) => o.order_num);
+  const errors: string[] = [];
+  let inserted = 0;
+
+  for (const order of toInsert) {
+    const firstItem = order.items[0];
+
+    const { error: orderErr } = await supabase.from("orders").insert({
+      order_num:        order.order_num,
+      platform:         order.platform,
+      order_type:       "KOREA" as const,
+      date:             order.date,
+      progress:         firstItem?.progress ?? "PAY",
+      customer_name:    order.customer_name,
+      gift:             firstItem?.gift ?? "no",
+      photo_sent:       firstItem?.photo_sent ?? "Not sent",
+      purchase_channel: null,
+    });
+
+    if (orderErr) { errors.push(`${order.order_num}: ${orderErr.message}`); continue; }
+
+    const itemRows = order.items.map((item) => ({
+      order_num:         order.order_num,
+      product_type:      null,
+      product_name:      item.product_name,
+      product_option:    null,
+      product_set_type:  "Single" as const,
+      quantity:          item.quantity,
+      price_rub:         item.price_rub,
+      prepayment_rub:    item.prepayment_rub,
+      extra_payment_rub: item.extra_payment_rub,
+      krw:               item.krw,
+      progress:          item.progress,
+      gift:              item.gift,
+      photo_sent:        item.photo_sent,
+    }));
+
+    const { error: itemsErr } = await supabase.from("order_items").insert(itemRows);
+
+    if (itemsErr) {
+      await supabase.from("orders").delete().eq("order_num", order.order_num);
+      errors.push(`${order.order_num} (items): ${itemsErr.message}`);
+      continue;
+    }
+
+    // fin_income_records 동기화
+    const { data: insertedItems } = await supabase
+      .from("order_items")
+      .select("id, product_name, product_type, price_rub, krw")
+      .eq("order_num", order.order_num);
+
+    for (const item of insertedItems ?? []) {
+      const saleKrw = Math.round(Number(item.price_rub) * 16.5);
+      const buyKrw  = Number(item.krw ?? 0);
+      await supabase.from("fin_income_records").upsert(
+        {
+          date:              order.date,
+          category:          "러시아판매",
+          sub_category:      null,
+          product_name:      item.product_name as string,
+          product_type:      (item.product_type as string | null) ?? null,
+          sale_currency:     "RUB",
+          sale_amount:       Number(item.price_rub),
+          sale_rate:         16.5,
+          sale_krw:          saleKrw,
+          purchase_currency: "KRW",
+          purchase_amount:   buyKrw,
+          purchase_rate:     null,
+          purchase_krw:      buyKrw,
+          profit_krw:        saleKrw - buyKrw,
+          source:            "order",
+          order_item_id:     item.id as string,
+          note:              null,
+          updated_at:        new Date().toISOString(),
+        },
+        { onConflict: "order_item_id" },
+      );
+    }
+
+    inserted++;
+  }
+
+  revalidatePath("/orders");
+  revalidatePath("/finance/income");
+  return { inserted, skipped, errors };
+}
+
 export async function deleteOrder(orderNum: string): Promise<void> {
   const supabase = await createClient();
   const {
