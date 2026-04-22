@@ -167,7 +167,6 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       editable: (params) => params.data?.item_id === null,
       cellRenderer: OrderNumRenderer,
       cellStyle: { textAlign: "center" },
-      headerClass: "ag-header-cell-center",
     },
     {
       field: "date",
@@ -177,7 +176,11 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agDateStringCellEditor",
       cellStyle: { textAlign: "center" },
-      headerClass: "ag-header-cell-center",
+      valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string>) => {
+        if (!value) return "—";
+        const [y, m, d] = value.split("-");
+        return `${y.slice(2)}/${m}/${d}`;
+      },
     },
     // ── 상품 정보 ─────────────────────────────────────────────────────────
     {
@@ -411,7 +414,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
   const colDefs = useMemo(() => buildColDefs(t), [t]);
 
   const defaultColDef = useMemo<ColDef<OrderGridRow>>(
-    () => ({ resizable: true, sortable: false, minWidth: 60 }),
+    () => ({ resizable: true, sortable: false, minWidth: 60, headerClass: "ag-header-cell-center" }),
     [],
   );
 
