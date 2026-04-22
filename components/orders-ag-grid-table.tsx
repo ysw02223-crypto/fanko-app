@@ -496,14 +496,10 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       else real.push(row);
     }
 
-    // 진행중 주문 먼저 (TOP_GROUP), 그 다음 날짜·주문번호 오름차순
+    // 날짜 오름차순 → 주문번호 오름차순
     const sorted = [...real].sort((a, b) => {
-      const aP = a.item_progress ?? "";
-      const bP = b.item_progress ?? "";
-      const aTop = TOP_GROUP.has(aP);
-      const bTop = TOP_GROUP.has(bP);
-      if (aTop && !bTop) return -1;
-      if (!aTop && bTop) return 1;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
       const dA = new Date(a.date).getTime();
       const dB = new Date(b.date).getTime();
       if (dA !== dB) return dA - dB;
