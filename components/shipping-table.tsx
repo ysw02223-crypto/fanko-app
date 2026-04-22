@@ -657,8 +657,10 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
       {
         headerName: "#",
         width: 44,
+        pinned: "left" as const,
         editable: false,
         sortable: false,
+        headerClass: "ag-header-cell-center",
         valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
         cellStyle: {
           textAlign: "center",
@@ -690,7 +692,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
       {
         field: "product_names",
         headerName: t.col_product_name,
-        flex: 1,
+        width: 500,
         minWidth: 180,
         editable: false,
         autoHeight: true,
