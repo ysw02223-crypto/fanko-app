@@ -966,13 +966,14 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
           portalEl,
         )}
 
-      {/* 제목 */}
-      <div className="mb-1 flex flex-col gap-1 px-5 pt-4">
-        <h1 className="text-2xl font-semibold tracking-tight">{t.page_shipping}</h1>
-      </div>
-
-      {/* FormulaBar + AG Grid */}
+      {/* 제목 + FormulaBar + AG Grid */}
       <div className="flex h-full flex-col">
+        <div className="shrink-0 mb-1 flex flex-col gap-1 px-5 pt-4">
+          <h1 className="text-2xl font-semibold tracking-tight">{t.page_shipping}</h1>
+        </div>
+
+        {/* FormulaBar + AG Grid */}
+        <div className="flex flex-1 min-h-0 flex-col">
         {/* FormulaBar */}
         {focusedCell ? (
           <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-zinc-300 bg-white px-2 dark:border-zinc-700 dark:bg-zinc-900">
@@ -1042,6 +1043,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
             stopEditingWhenCellsLoseFocus
             rowBuffer={20}
           />
+        </div>
         </div>
       </div>
     </>
