@@ -70,28 +70,37 @@ const PROGRESS_STYLE: Record<string, string> = {
   CANCEL:        "bg-gray-100 text-gray-500",
 };
 
-// ── 진행상태별 행 배경색 (hex) ─────────────────────────────────────────────
+// ── 진행상태별 행 배경색 (hex, 40% 불투명도로 연하게) ─────────────────────
 const PROGRESS_BG_COLOR: Record<string, string> = {
-  PAY:             "#dbeafe", // blue-100
-  "BUY IN KOREA":  "#ede9fe", // violet-100
-  "ARRIVE KOR":    "#cffafe", // cyan-100
-  "IN DELIVERY":   "#fef3c7", // amber-100
-  "ARRIVE RUS":    "#ffedd5", // orange-100
-  "RU DELIVERY":   "#fce7f3", // pink-100
-  DONE:            "#dcfce7", // green-100
-  "WAIT CUSTOMER": "#fef9c3", // yellow-100
-  PROBLEM:         "#fee2e2", // red-100
-  CANCEL:          "#f3f4f6", // gray-100
+  PAY:             "#dbeafe66", // blue-100 @ 40%
+  "BUY IN KOREA":  "#ede9fe66", // violet-100 @ 40%
+  "ARRIVE KOR":    "#cffafe66", // cyan-100 @ 40%
+  "IN DELIVERY":   "#fef3c766", // amber-100 @ 40%
+  "ARRIVE RUS":    "#ffedd566", // orange-100 @ 40%
+  "RU DELIVERY":   "#fce7f366", // pink-100 @ 40%
+  DONE:            "#dcfce766", // green-100 @ 40%
+  "WAIT CUSTOMER": "#fef9c366", // yellow-100 @ 40%
+  PROBLEM:         "#fee2e266", // red-100 @ 40%
+  CANCEL:          "#f3f4f666", // gray-100 @ 40%
 };
 
 // ── TOP_GROUP (진행중인 주문: DONE·CANCEL 위에 정렬) ───────────────────────
 const TOP_GROUP = new Set(["PAY", "BUY IN KOREA", "ARRIVE KOR", "IN DELIVERY"]);
 
-// ── 행 배경색 (groupColorIndex 기반) ─────────────────────────────────────
-const ROW_BG_COLORS = [
-  "#e2e8f0", "#bfdbfe", "#ddd6fe", "#fbcfe8", "#fde68a",
-  "#99f6e4", "#fecaca", "#c7d2fe", "#a5f3fc", "#fed7aa",
-  "#d9f99d", "#f5d0fe",
+// ── 주문번호 그룹색 (배경 -300, 텍스트 -950 — 진하고 가독성 높음) ───────────
+const ROW_GROUP_COLORS: { bg: string; text: string }[] = [
+  { bg: "#cbd5e1", text: "#0f172a" }, // slate-300  / slate-950
+  { bg: "#93c5fd", text: "#1e3a8a" }, // blue-300   / blue-900
+  { bg: "#c4b5fd", text: "#2e1065" }, // violet-300 / violet-950
+  { bg: "#f9a8d4", text: "#500724" }, // pink-300   / pink-950
+  { bg: "#fcd34d", text: "#451a03" }, // amber-300  / amber-950
+  { bg: "#5eead4", text: "#042f2e" }, // teal-300   / teal-950
+  { bg: "#fca5a5", text: "#450a0a" }, // red-300    / red-950
+  { bg: "#a5b4fc", text: "#1e1b4b" }, // indigo-300 / indigo-950
+  { bg: "#67e8f9", text: "#083344" }, // cyan-300   / cyan-950
+  { bg: "#fdba74", text: "#431407" }, // orange-300 / orange-950
+  { bg: "#bef264", text: "#1a2e05" }, // lime-300   / lime-950
+  { bg: "#f0abfc", text: "#4a044e" }, // fuchsia-300/ fuchsia-950
 ];
 
 // ── order 필드 집합 ──────────────────────────────────────────────────────
@@ -183,8 +192,9 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       sortable: false,
       resizable: false,
       cellStyle: (params) => {
-        const idx = (params.data?.groupColorIndex ?? 0) % ROW_BG_COLORS.length;
-        return { textAlign: "center", color: "#a1a1aa", backgroundColor: ROW_BG_COLORS[idx] + "66" };
+        const idx = (params.data?.groupColorIndex ?? 0) % ROW_GROUP_COLORS.length;
+        const { bg, text } = ROW_GROUP_COLORS[idx];
+        return { textAlign: "center", color: text + "99", backgroundColor: bg };
       },
       valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
     },
@@ -197,9 +207,9 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       editable: (params) => params.data?.item_id === null,
       cellRenderer: OrderNumRenderer,
       cellStyle: (params) => {
-        const idx = (params.data?.groupColorIndex ?? 0) % ROW_BG_COLORS.length;
-        const bg = ROW_BG_COLORS[idx] + "66";
-        return { textAlign: "center", backgroundColor: bg };
+        const idx = (params.data?.groupColorIndex ?? 0) % ROW_GROUP_COLORS.length;
+        const { bg, text } = ROW_GROUP_COLORS[idx];
+        return { textAlign: "center", backgroundColor: bg, color: text };
       },
     },
     {
@@ -210,9 +220,9 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       editable: true,
       cellEditor: "agDateStringCellEditor",
       cellStyle: (params) => {
-        const idx = (params.data?.groupColorIndex ?? 0) % ROW_BG_COLORS.length;
-        const bg = ROW_BG_COLORS[idx] + "66";
-        return { textAlign: "center", backgroundColor: bg };
+        const idx = (params.data?.groupColorIndex ?? 0) % ROW_GROUP_COLORS.length;
+        const { bg, text } = ROW_GROUP_COLORS[idx];
+        return { textAlign: "center", backgroundColor: bg, color: text };
       },
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string>) => {
         if (!value) return "—";
