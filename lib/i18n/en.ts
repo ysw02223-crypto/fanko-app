@@ -116,6 +116,7 @@ export const en = {
   ship_filter_status: "Status",
   ship_filter_done: "Completed",
   ship_filter_todo: "Incomplete",
+  ship_filter_order_done: "Done",
   ship_filter_reset: "Reset",
   ship_excel_download: "Excel Download",
   ship_excel_downloading: "Downloading…",

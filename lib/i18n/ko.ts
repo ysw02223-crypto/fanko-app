@@ -116,6 +116,7 @@ export const ko = {
   ship_filter_status: "작성 상태",
   ship_filter_done: "작성 완료",
   ship_filter_todo: "미작성",
+  ship_filter_order_done: "주문 완료",
   ship_filter_reset: "초기화",
   ship_excel_download: "엑셀 다운로드",
   ship_excel_downloading: "다운로드 중…",

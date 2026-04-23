@@ -193,8 +193,9 @@ function DownloadedRenderer(
       <input
         type="checkbox"
         checked={row.progress === "IN DELIVERY"}
+        disabled={row.progress === "DONE"}
         onChange={(e) => ctx.onDownloadToggle(row.order_num, e.target.checked)}
-        className="h-4 w-4 cursor-pointer accent-blue-600"
+        className="h-4 w-4 cursor-pointer accent-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
       />
     </div>
   );
@@ -277,7 +278,7 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [undoingId, setUndoingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | "done" | "todo">("");
+  const [statusFilter, setStatusFilter] = useState<"" | "done" | "todo" | "order_done">("");
   const [openFilter, setOpenFilter] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [focusedCell, setFocusedCell] = useState<ShippingFocusedCell | null>(null);
@@ -607,9 +608,10 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
   const rowData = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return rows.filter((r) => {
-      if (!q && r.progress === "DONE") return false;
-      if (statusFilter === "done" && !isComplete(r)) return false;
-      if (statusFilter === "todo" && isComplete(r)) return false;
+      if (!q && r.progress === "DONE" && statusFilter !== "order_done") return false;
+      if (statusFilter === "done"       && !isComplete(r))              return false;
+      if (statusFilter === "todo"       && isComplete(r))               return false;
+      if (statusFilter === "order_done" && r.progress !== "DONE")       return false;
       if (q && !r.order_num.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -888,17 +890,20 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                       ? ` · ${t.ship_filter_done}`
                       : statusFilter === "todo"
                         ? ` · ${t.ship_filter_todo}`
-                        : ""}
+                        : statusFilter === "order_done"
+                          ? ` · ${t.ship_filter_order_done}`
+                          : ""}
                     <span className="text-xs opacity-50">▾</span>
                   </button>
                   {openFilter && (
                     <div className="absolute left-0 top-full z-50 mt-1 min-w-[150px] rounded-lg border border-gray-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
                       {(
                         [
-                          { label: t.filter_all, value: "" },
-                          { label: t.ship_filter_done, value: "done" },
-                          { label: t.ship_filter_todo, value: "todo" },
-                        ] as { label: string; value: "" | "done" | "todo" }[]
+                          { label: t.filter_all,              value: "" },
+                          { label: t.ship_filter_done,        value: "done" },
+                          { label: t.ship_filter_todo,        value: "todo" },
+                          { label: t.ship_filter_order_done,  value: "order_done" },
+                        ] as { label: string; value: "" | "done" | "todo" | "order_done" }[]
                       ).map((opt) => (
                         <button
                           key={opt.value}

@@ -116,6 +116,7 @@ export const ru = {
   ship_filter_status: "Статус",
   ship_filter_done: "Заполнено",
   ship_filter_todo: "Не заполнено",
+  ship_filter_order_done: "Завершено",
   ship_filter_reset: "Сбросить",
   ship_excel_download: "Скачать Excel",
   ship_excel_downloading: "Скачивание…",
