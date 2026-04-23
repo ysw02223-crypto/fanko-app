@@ -70,6 +70,20 @@ const PROGRESS_STYLE: Record<string, string> = {
   CANCEL:        "bg-gray-100 text-gray-500",
 };
 
+// ── 진행상태별 행 배경색 (hex) ─────────────────────────────────────────────
+const PROGRESS_BG_COLOR: Record<string, string> = {
+  PAY:             "#dbeafe", // blue-100
+  "BUY IN KOREA":  "#ede9fe", // violet-100
+  "ARRIVE KOR":    "#cffafe", // cyan-100
+  "IN DELIVERY":   "#fef3c7", // amber-100
+  "ARRIVE RUS":    "#ffedd5", // orange-100
+  "RU DELIVERY":   "#fce7f3", // pink-100
+  DONE:            "#dcfce7", // green-100
+  "WAIT CUSTOMER": "#fef9c3", // yellow-100
+  PROBLEM:         "#fee2e2", // red-100
+  CANCEL:          "#f3f4f6", // gray-100
+};
+
 // ── TOP_GROUP (진행중인 주문: DONE·CANCEL 위에 정렬) ───────────────────────
 const TOP_GROUP = new Set(["PAY", "BUY IN KOREA", "ARRIVE KOR", "IN DELIVERY"]);
 
@@ -179,7 +193,11 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       pinned: "left" as const,
       editable: (params) => params.data?.item_id === null,
       cellRenderer: OrderNumRenderer,
-      cellStyle: { textAlign: "center" },
+      cellStyle: (params) => {
+        const idx = (params.data?.groupColorIndex ?? 0) % ROW_BG_COLORS.length;
+        const bg = ROW_BG_COLORS[idx] + "66";
+        return { textAlign: "center", backgroundColor: bg };
+      },
     },
     {
       field: "date",
@@ -188,7 +206,11 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       pinned: "left" as const,
       editable: true,
       cellEditor: "agDateStringCellEditor",
-      cellStyle: { textAlign: "center" },
+      cellStyle: (params) => {
+        const idx = (params.data?.groupColorIndex ?? 0) % ROW_BG_COLORS.length;
+        const bg = ROW_BG_COLORS[idx] + "66";
+        return { textAlign: "center", backgroundColor: bg };
+      },
       valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string>) => {
         if (!value) return "—";
         const [y, m, d] = value.split("-");
@@ -1005,17 +1027,18 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
     [],
   );
 
-  // ── row 스타일 (draft 행 색상 + 기존 groupColorIndex) ────────────────────
+  // ── row 스타일: draft=초록/빨강, 실제 행=진행상태 배경색 ──────────────────
   const getRowStyle = useCallback(
     (params: RowClassParams<OrderGridRow>): RowStyle | undefined => {
       if (params.data?.item_id === null) {
         if (draftErrors.has(params.data.rowKey)) {
           return { backgroundColor: "#fee2e2", borderLeft: "3px solid #ef4444" };
         }
-        return { backgroundColor: "#f0fdf4" }; // 연두색: 입력 대기
+        return { backgroundColor: "#f0fdf4" };
       }
-      const idx = (params.data?.groupColorIndex ?? 0) % ROW_BG_COLORS.length;
-      return { backgroundColor: ROW_BG_COLORS[idx] + "33" };
+      const progress = params.data?.item_progress ?? "";
+      const bg = PROGRESS_BG_COLOR[progress] ?? "#f9fafb";
+      return { backgroundColor: bg };
     },
     [draftErrors],
   );
