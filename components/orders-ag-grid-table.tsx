@@ -651,9 +651,7 @@ export function OrdersAgGrid({ initialOrders }: { initialOrders: OrderWithNested
       } catch (err) {
         revertFn();
         setToastType("error");
-        const msg = err instanceof Error ? err.message : t.toast_save_fail;
-        const isNetwork = msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("networkerror");
-        setToast(isNetwork ? "네트워크 오류 — 인터넷 연결을 확인하고 다시 시도하세요." : msg);
+        setToast(err instanceof Error ? err.message : t.toast_save_fail);
       }
     },
     [supabase, t],

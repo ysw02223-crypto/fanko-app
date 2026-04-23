@@ -11,7 +11,6 @@ import {
 const HEADER_MAP: Record<string, keyof DeliveryImportRow> = {
   "주문번호": "order_num",
   "order_num": "order_num",
-  "order num": "order_num",
   "주문 번호": "order_num",
   "주문번호1": "order_num",
   "배송비": "shipping_fee",
@@ -27,7 +26,6 @@ const HEADER_MAP: Record<string, keyof DeliveryImportRow> = {
   "운송장번호": "tracking_number",
   "송장번호": "tracking_number",
   "shipter 배송 번호": "tracking_number",
-  "delivery": "tracking_number",
 };
 
 function parseSheet(file: File): Promise<DeliveryImportRow[]> {
