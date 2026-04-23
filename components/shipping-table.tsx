@@ -21,6 +21,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toggleDownloadedAction } from "@/lib/actions/shipping";
 import type { OrderForShipping } from "@/lib/actions/shipping";
 import { useT } from "@/lib/i18n";
+import { RecipientInfoUploadButton } from "@/components/recipient-info-upload-button";
 
 // ── AG Grid 모듈 등록 ─────────────────────────────────────────────────────
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -928,6 +929,9 @@ export function ShippingTable({ initialOrders }: ShippingTableProps) {
                     {t.ship_filter_reset}
                   </button>
                 )}
+
+                {/* 수취인 정보 업로드 */}
+                <RecipientInfoUploadButton />
 
                 {/* 엑셀 다운로드 */}
                 <button
