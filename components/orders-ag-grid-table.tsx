@@ -191,11 +191,7 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
       editable: false,
       sortable: false,
       resizable: false,
-      cellStyle: (params) => {
-        const idx = (params.data?.groupColorIndex ?? 0) % ROW_GROUP_COLORS.length;
-        const { bg, text } = ROW_GROUP_COLORS[idx];
-        return { textAlign: "center", color: text + "99", backgroundColor: bg };
-      },
+      cellStyle: { textAlign: "center", color: "#a1a1aa", backgroundColor: "#ffffff" },
       valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
     },
     // ── 고정 컬럼 (pinned left) ──────────────────────────────────────────
