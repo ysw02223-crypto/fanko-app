@@ -196,6 +196,20 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
     },
     // ── 고정 컬럼 (pinned left) ──────────────────────────────────────────
     {
+      field: "date",
+      headerName: t.col_date,
+      width: 100,
+      pinned: "left" as const,
+      editable: true,
+      cellEditor: "agDateStringCellEditor",
+      cellStyle: { textAlign: "center", backgroundColor: "#ffffff" },
+      valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string>) => {
+        if (!value) return "—";
+        const [y, m, d] = value.split("-");
+        return `${y.slice(2)}/${m}/${d}`;
+      },
+    },
+    {
       field: "order_num",
       headerName: t.col_order_num,
       width: 100,
@@ -206,24 +220,6 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
         const idx = (params.data?.groupColorIndex ?? 0) % ROW_GROUP_COLORS.length;
         const { bg, text } = ROW_GROUP_COLORS[idx];
         return { textAlign: "center", backgroundColor: bg, color: text };
-      },
-    },
-    {
-      field: "date",
-      headerName: t.col_date,
-      width: 100,
-      pinned: "left" as const,
-      editable: true,
-      cellEditor: "agDateStringCellEditor",
-      cellStyle: (params) => {
-        const idx = (params.data?.groupColorIndex ?? 0) % ROW_GROUP_COLORS.length;
-        const { bg, text } = ROW_GROUP_COLORS[idx];
-        return { textAlign: "center", backgroundColor: bg, color: text };
-      },
-      valueFormatter: ({ value }: ValueFormatterParams<OrderGridRow, string>) => {
-        if (!value) return "—";
-        const [y, m, d] = value.split("-");
-        return `${y.slice(2)}/${m}/${d}`;
       },
     },
     // ── 상품 정보 ─────────────────────────────────────────────────────────
