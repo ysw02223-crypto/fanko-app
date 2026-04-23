@@ -494,7 +494,7 @@ export async function bulkImportOrdersAction(
     for (const item of insertedItems ?? []) {
       const saleKrw = Math.round(Number(item.price_rub) * 16.5);
       const buyKrw  = Number(item.krw ?? 0);
-      await supabase.from("fin_income_records").upsert(
+      const { error: finErr } = await supabase.from("fin_income_records").upsert(
         {
           date:              order.date,
           category:          "러시아판매",
@@ -517,6 +517,7 @@ export async function bulkImportOrdersAction(
         },
         { onConflict: "order_item_id" },
       );
+      if (finErr) errors.push(`${order.order_num} (fin): ${finErr.message}`);
     }
 
     inserted++;

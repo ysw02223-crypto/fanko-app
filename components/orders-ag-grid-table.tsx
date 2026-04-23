@@ -159,6 +159,18 @@ function buildColDefs(t: TranslationDict): ColDef<OrderGridRow>[] {
   });
 
   return [
+    // ── 행 번호 ──────────────────────────────────────────────────────────
+    {
+      headerName: "#",
+      width: 55,
+      minWidth: 55,
+      pinned: "left" as const,
+      editable: false,
+      sortable: false,
+      resizable: false,
+      cellStyle: { textAlign: "center", color: "#a1a1aa" },
+      valueGetter: (params) => (params.node?.rowIndex ?? 0) + 1,
+    },
     // ── 고정 컬럼 (pinned left) ──────────────────────────────────────────
     {
       field: "order_num",
